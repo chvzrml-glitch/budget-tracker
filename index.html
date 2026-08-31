@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Budget Tracker</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+    <header>
+        <h1>💰 Budget Tracker</h1>
+        <p>Track your money, spending, and daily transactions.</p>
+    </header>
+
+
+    <!-- STARTING MONEY -->
+    <section class="card">
+
+        <h2>Starting Money</h2>
+
+        <div class="starting-money">
+
+            <input
+                type="number"
+                id="startingMoney"
+                placeholder="Enter starting money"
+                min="0"
+            >
+
+            <button id="setMoneyBtn">
+                Set Money
+            </button>
+
+        </div>
+
+    </section>
+
+
+    <!-- ADD TRANSACTION -->
+    <section class="card">
+
+        <h2>Add Transaction</h2>
+
+        <div class="input-grid">
+
+            <div>
+                <label for="date">Date</label>
+
+                <input
+                    type="date"
+                    id="date"
+                >
+            </div>
+
+
+            <div>
+                <label for="description">What did you spend on?</label>
+
+                <input
+                    type="text"
+                    id="description"
+                    placeholder="e.g. Food"
+                >
+            </div>
+
+
+            <div>
+                <label for="amount">Amount</label>
+
+                <input
+                    type="number"
+                    id="amount"
+                    placeholder="₱0.00"
+                    min="0"
+                >
+            </div>
+
+        </div>
+
+
+        <!-- CATEGORY -->
+
+        <label>Category</label>
+
+        <div class="choices">
+
+            <button class="choice" data-category="Needs">
+                🛒 Needs
+            </button>
+
+            <button class="choice" data-category="Wants">
+                🎮 Wants
+            </button>
+
+            <button class="choice" data-category="Savings">
+                🏦 Savings
+            </button>
+
+        </div>
+
+
+        <!-- PAYMENT -->
+
+        <label>Payment Method</label>
+
+        <div class="choices">
+
+            <button class="choice" data-payment="Cash">
+                💵 Cash
+            </button>
+
+            <button class="choice" data-payment="Card">
+                💳 Card
+            </button>
+
+        </div>
+
+
+        <button id="addTransactionBtn" class="primary-btn">
+            + Add Transaction
+        </button>
+
+    </section>
+
+
+    <!-- DASHBOARD -->
+
+    <div class="dashboard">
+
+        <!-- TRANSACTION HISTORY -->
+
+        <section class="card">
+
+            <h2>Transaction History</h2>
+
+            <div class="date-navigation">
+
+                <button id="previousDate">◀</button>
+
+                <input
+                    type="date"
+                    id="historyDate"
+                >
+
+                <button id="nextDate">▶</button>
+
+            </div>
+
+
+            <div id="transactionList">
+
+                <p class="empty">
+                    No transactions for this date.
+                </p>
+
+            </div>
+
+
+            <div class="daily-total">
+
+                <span>Daily Total</span>
+
+                <strong id="dailyTotal">
+                    ₱0.00
+                </strong>
+
+            </div>
+
+        </section>
+
+
+        <!-- SUMMARY -->
+
+        <section class="card summary">
+
+            <h2>Summary</h2>
+
+
+            <!-- SPENDING -->
+
+            <div class="summary-box">
+
+                <h3>💸 Spending</h3>
+
+                <div class="summary-row">
+
+                    <span>Total Spent</span>
+
+                    <strong id="totalSpent">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <!-- MONEY -->
+
+            <div class="summary-box">
+
+                <h3>💰 Money Breakdown</h3>
+
+                <div class="summary-row">
+
+                    <span>💵 Cash</span>
+
+                    <strong id="cashBalance">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+                <div class="summary-row">
+
+                    <span>💳 Card</span>
+
+                    <strong id="cardBalance">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+                <div class="summary-row">
+
+                    <span>🧾 Utang</span>
+
+                    <strong id="debtBalance">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+                <div class="summary-row remaining">
+
+                    <span>💰 Remaining</span>
+
+                    <strong id="remainingBalance">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <!-- DEBT -->
+
+            <div class="summary-box">
+
+                <h3>🧾 Utang</h3>
+
+                <button id="addDebtBtn" class="secondary-btn">
+                    + Add Utang
+                </button>
+
+                <div id="debtList"></div>
+
+            </div>
+
+        </section>
+
+    </div>
+
+</div>
+
+
+<!-- IMPORTANT:
+     Firebase + your JavaScript are both modules.
+-->
+
+<script type="module" src="script.js"></script>
+
+</body>
+</html>
