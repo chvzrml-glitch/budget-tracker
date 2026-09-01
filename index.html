@@ -1,197 +1,588 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>Budget Tracker</title>
 
-    <link rel="stylesheet" href="style.css">
+    <link
+        rel="stylesheet"
+        href="style.css"
+    >
 </head>
+
 
 <body>
 
 <div class="container">
 
-    <!-- HEADER -->
+
+    <!-- =================================================
+         HEADER
+    ================================================== -->
+
     <header>
+
         <h1>💰 Budget Tracker</h1>
-        <p>Track your money, spending, and daily transactions.</p>
+
+        <p>
+            Track your money, spending, events,
+            transfers, and daily transactions.
+        </p>
+
     </header>
 
 
-    <!-- STARTING MONEY -->
+
+    <!-- =================================================
+         STARTING MONEY
+    ================================================== -->
+
     <section class="card">
 
         <h2>Starting Money</h2>
 
+
         <div class="starting-money">
 
-            <input
-                type="number"
-                id="startingMoney"
-                placeholder="Enter starting money"
-                min="0"
-            >
+
+            <div class="starting-balance-field">
+
+                <label for="startingCash">
+                    💵 Cash
+                </label>
+
+                <input
+                    type="number"
+                    id="startingCash"
+                    placeholder="₱0.00"
+                    min="0"
+                    step="0.01"
+                >
+
+            </div>
+
+
+
+            <div class="starting-balance-field">
+
+                <label for="startingCard">
+                    💳 Card
+                </label>
+
+                <input
+                    type="number"
+                    id="startingCard"
+                    placeholder="₱0.00"
+                    min="0"
+                    step="0.01"
+                >
+
+            </div>
+
+
+
+            <div class="starting-balance-field">
+
+                <label for="startingBeep">
+                    🚆 Beep
+                </label>
+
+                <input
+                    type="number"
+                    id="startingBeep"
+                    placeholder="₱0.00"
+                    min="0"
+                    step="0.01"
+                >
+
+            </div>
+
+
 
             <button id="setMoneyBtn">
-                Set Money
+                Save Starting Money
             </button>
+
 
         </div>
 
     </section>
 
 
-    <!-- ADD TRANSACTION -->
+
+    <!-- =================================================
+         ADD TRANSACTION
+    ================================================== -->
+
     <section class="card">
 
         <h2>Add Transaction</h2>
 
+
         <div class="input-grid">
 
+
             <div>
-                <label for="date">Date</label>
+
+                <label for="date">
+                    Date
+                </label>
 
                 <input
                     type="date"
                     id="date"
                 >
+
             </div>
 
 
+
             <div>
-                <label for="description">What did you spend on?</label>
+
+                <label for="description">
+                    What did you spend on?
+                </label>
 
                 <input
                     type="text"
                     id="description"
                     placeholder="e.g. Food"
                 >
+
             </div>
 
 
+
             <div>
-                <label for="amount">Amount</label>
+
+                <label for="amount">
+                    Amount
+                </label>
 
                 <input
                     type="number"
                     id="amount"
                     placeholder="₱0.00"
                     min="0"
+                    step="0.01"
                 >
+
             </div>
+
 
         </div>
 
 
+
         <!-- CATEGORY -->
 
-        <label>Category</label>
+        <label>
+            Category
+        </label>
+
 
         <div class="choices">
 
-            <button class="choice" data-category="Needs">
+            <button
+                class="choice"
+                data-category="Needs"
+            >
                 🛒 Needs
             </button>
 
-            <button class="choice" data-category="Wants">
+
+            <button
+                class="choice"
+                data-category="Wants"
+            >
                 🎮 Wants
             </button>
 
-            <button class="choice" data-category="Savings">
+
+            <button
+                class="choice"
+                data-category="Savings"
+            >
                 🏦 Savings
             </button>
 
         </div>
 
 
-        <!-- PAYMENT -->
 
-        <label>Payment Method</label>
+        <!-- PAYMENT METHOD -->
+
+        <label>
+            Payment Method
+        </label>
+
 
         <div class="choices">
 
-            <button class="choice" data-payment="Cash">
+
+            <button
+                class="choice"
+                data-payment="Cash"
+            >
                 💵 Cash
             </button>
 
-            <button class="choice" data-payment="Card">
+
+            <button
+                class="choice"
+                data-payment="Card"
+            >
                 💳 Card
             </button>
+
+
+            <button
+                class="choice"
+                data-payment="Beep"
+            >
+                🚆 Beep
+            </button>
+
 
         </div>
 
 
-        <button id="addTransactionBtn" class="primary-btn">
+
+        <button
+            id="addTransactionBtn"
+            class="primary-btn"
+        >
             + Add Transaction
         </button>
+
+
+
+        <!-- =================================================
+             TRANSFER MONEY
+        ================================================== -->
+
+        <div
+            id="transferBox"
+            class="transfer-box"
+        >
+
+            <h3>
+                🔄 Transfer Money
+            </h3>
+
+
+            <div class="transfer-grid">
+
+
+                <div>
+
+                    <label for="transferDate">
+                        Date
+                    </label>
+
+                    <input
+                        type="date"
+                        id="transferDate"
+                    >
+
+                </div>
+
+
+
+                <div>
+
+                    <label for="transferFrom">
+                        From
+                    </label>
+
+                    <select id="transferFrom">
+
+                        <option value="Cash">
+                            💵 Cash
+                        </option>
+
+                        <option value="Card">
+                            💳 Card
+                        </option>
+
+                        <option value="Beep">
+                            🚆 Beep
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+
+                <div>
+
+                    <label for="transferTo">
+                        To
+                    </label>
+
+                    <select id="transferTo">
+
+                        <option value="Card">
+                            💳 Card
+                        </option>
+
+                        <option value="Cash">
+                            💵 Cash
+                        </option>
+
+                        <option value="Beep">
+                            🚆 Beep
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+
+                <div>
+
+                    <label for="transferAmount">
+                        Amount
+                    </label>
+
+                    <input
+                        type="number"
+                        id="transferAmount"
+                        placeholder="₱0.00"
+                        min="0"
+                        step="0.01"
+                    >
+
+                </div>
+
+
+            </div>
+
+
+
+            <button
+                id="transferMoneyBtn"
+                class="secondary-btn transfer-btn"
+            >
+                Transfer Money
+            </button>
+
+
+        </div>
+
 
     </section>
 
 
-    <!-- DASHBOARD -->
+
+    <!-- =================================================
+         DASHBOARD
+    ================================================== -->
 
     <div class="dashboard">
 
-        <!-- TRANSACTION HISTORY -->
+
+
+        <!-- =================================================
+             TRANSACTION HISTORY
+        ================================================== -->
 
         <section class="card">
 
-            <h2>Transaction History</h2>
+            <h2>
+                Transaction History
+            </h2>
+
+
 
             <div class="date-navigation">
 
-                <button id="previousDate">◀</button>
+
+                <button id="previousDate">
+                    ◀
+                </button>
+
 
                 <input
                     type="date"
                     id="historyDate"
                 >
 
-                <button id="nextDate">▶</button>
+
+                <button id="nextDate">
+                    ▶
+                </button>
+
 
             </div>
 
 
+
+            <!-- =================================================
+                 EVENT / NOTE
+            ================================================== -->
+
+            <div
+                id="eventBox"
+                class="event-box"
+            >
+
+
+                <label for="eventInput">
+                    📅 Event / Note for this day
+                </label>
+
+
+                <div class="event-input-row">
+
+
+                    <input
+                        type="text"
+                        id="eventInput"
+                        placeholder="e.g. School, Gym, Birthday..."
+                    >
+
+
+                    <button
+                        id="saveEventBtn"
+                        class="secondary-btn"
+                    >
+                        Save
+                    </button>
+
+
+                </div>
+
+
+
+                <div
+                    id="eventDisplay"
+                    class="event-display"
+                >
+                    No event saved for this date.
+                </div>
+
+
+            </div>
+
+
+
+            <!-- TRANSACTION LIST -->
+
             <div id="transactionList">
+
 
                 <p class="empty">
                     No transactions for this date.
                 </p>
 
+
             </div>
 
 
+
+            <!-- DAILY TOTAL -->
+
             <div class="daily-total">
 
-                <span>Daily Total</span>
+
+                <span>
+                    Daily Total
+                </span>
+
 
                 <strong id="dailyTotal">
                     ₱0.00
                 </strong>
 
+
             </div>
+
 
         </section>
 
 
-        <!-- SUMMARY -->
+
+        <!-- =================================================
+             SUMMARY
+        ================================================== -->
 
         <section class="card summary">
 
-            <h2>Summary</h2>
+
+            <h2>
+                Summary
+            </h2>
 
 
-            <!-- SPENDING -->
+
+            <!-- MONEY BREAKDOWN -->
 
             <div class="summary-box">
 
-                <h3>💸 Spending</h3>
+
+                <h3>
+                    💰 Money Breakdown
+                </h3>
+
+
 
                 <div class="summary-row">
 
-                    <span>Total Spent</span>
+                    <span>
+                        💵 Cash
+                    </span>
+
+                    <strong id="cashSpent">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+
+                <div class="summary-row">
+
+                    <span>
+                        💳 Card
+                    </span>
+
+                    <strong id="cardSpent">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+
+                <div class="summary-row">
+
+                    <span>
+                        🚆 Beep
+                    </span>
+
+                    <strong id="beepSpent">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+
+                <div class="summary-row remaining">
+
+                    <span>
+                        Total Spent
+                    </span>
 
                     <strong id="totalSpent">
                         ₱0.00
@@ -199,40 +590,100 @@
 
                 </div>
 
+
             </div>
 
 
-            <!-- MONEY -->
+
+            <!-- REMAINING -->
 
             <div class="summary-box">
 
-                <h3>💰 Money Breakdown</h3>
+
+                <h3>
+                    💵 Remaining
+                </h3>
+
+
 
                 <div class="summary-row">
 
-                    <span>💵 Cash</span>
+                    <span>
+                        💵 Cash
+                    </span>
 
-                    <strong id="cashBalance">
+                    <strong id="cashRemaining">
                         ₱0.00
                     </strong>
 
                 </div>
 
 
+
                 <div class="summary-row">
 
-                    <span>💳 Card</span>
+                    <span>
+                        💳 Card
+                    </span>
 
-                    <strong id="cardBalance">
+                    <strong id="cardRemaining">
                         ₱0.00
                     </strong>
 
                 </div>
 
 
+
                 <div class="summary-row">
 
-                    <span>🧾 Utang</span>
+                    <span>
+                        🚆 Beep
+                    </span>
+
+                    <strong id="beepRemaining">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+
+                <div class="summary-row remaining">
+
+                    <span>
+                        Total Remaining
+                    </span>
+
+                    <strong id="totalRemaining">
+                        ₱0.00
+                    </strong>
+
+                </div>
+
+
+            </div>
+
+
+
+            <!-- UTANG -->
+
+            <div class="summary-box">
+
+
+                <h3>
+                    🧾 Utang
+                </h3>
+
+
+
+                <div
+                    id="allDebtSummary"
+                    class="summary-row"
+                >
+
+                    <span>
+                        All Utang
+                    </span>
 
                     <strong id="debtBalance">
                         ₱0.00
@@ -241,45 +692,42 @@
                 </div>
 
 
-                <div class="summary-row remaining">
 
-                    <span>💰 Remaining</span>
-
-                    <strong id="remainingBalance">
-                        ₱0.00
-                    </strong>
-
-                </div>
-
-            </div>
-
-
-            <!-- DEBT -->
-
-            <div class="summary-box">
-
-                <h3>🧾 Utang</h3>
-
-                <button id="addDebtBtn" class="secondary-btn">
+                <button
+                    id="addDebtBtn"
+                    class="secondary-btn"
+                >
                     + Add Utang
                 </button>
 
+
+
                 <div id="debtList"></div>
+
 
             </div>
 
+
         </section>
 
+
     </div>
+
 
 </div>
 
 
-<!-- IMPORTANT:
-     Firebase + your JavaScript are both modules.
--->
 
-<script type="module" src="script.js"></script>
+<!-- =================================================
+     JAVASCRIPT
+================================================== -->
+
+<script
+    type="module"
+    src="script.js"
+></script>
+
 
 </body>
+
 </html>
