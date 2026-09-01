@@ -1,22 +1,5 @@
-// ======================================================
-// FIREBASE
-// ======================================================
-
-import { initializeApp } from
-"https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-
-import {
-    getFirestore,
-    doc,
-    getDoc,
-    setDoc
-} from
-"https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
-
-
-// ======================================================
-// FIREBASE CONFIG
-// ======================================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyC-Ye3G7g5fVu0-vq99y_EZOM3oBxLf2Hc",
@@ -27,1590 +10,903 @@ const firebaseConfig = {
     appId: "1:253859931650:web:96e803218deaffe863a91b"
 };
 
-
-// ======================================================
-// FIREBASE INITIALIZE
-// ======================================================
-
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-
 const budgetDoc = doc(db, "budgetTracker", "main");
 
-
-// ======================================================
-// DATA
-// ======================================================
-
 let transactions = [];
-let debts = [];
 let transfers = [];
-let events = {};
+let debts = [];
+let allowanceEntries = [];
+let dailyPlans = {};
 
-let startingBalances = {
-    Cash: 0,
-    Card: 0,
-    Beep: 0
+let categoryBudgets = {
+    Needs: 0,
+    Wants: 0,
+    Savings: 0
 };
 
-let selectedCategory = "";
-let selectedPayment = "";
+let selectedCategory = "Needs";
 
+const $ = (id) => document.getElementById(id);
 
-// ======================================================
-// DATE FUNCTIONS
-// ======================================================
+function money(value) {
+    return `₱${(Number(value) || 0).toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    })}`;
+}
 
 function getToday() {
-    const today = new Date();
+    const now = new Date();
 
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, "0");
-    const day = String(today.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
+    return `${now.getFullYear()}-${String(
+        now.getMonth() + 1
+    ).padStart(2, "0")}-${String(
+        now.getDate()
+    ).padStart(2, "0")}`;
 }
 
+function shiftDate(dateString, amount) {
+    const [year, month, day] = dateString.split("-").map(Number);
 
-function formatDate(date) {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
+    const date = new Date(
+        year,
+        month - 1,
+        day
+    );
 
-    return `${year}-${month}-${day}`;
+    date.setDate(
+        date.getDate() + amount
+    );
+
+    return `${date.getFullYear()}-${String(
+        date.getMonth() + 1
+    ).padStart(2, "0")}-${String(
+        date.getDate()
+    ).padStart(2, "0")}`;
 }
 
-
-// ======================================================
-// AUTOMATICALLY UPGRADE YOUR OLD HTML
-// ======================================================
-
-function upgradeInterface() {
-
-    // --------------------------------------------------
-    // STARTING MONEY
-    // --------------------------------------------------
-
-    const startingMoneyContainer =
-        document.querySelector(".starting-money");
-
-    if (startingMoneyContainer) {
-
-        startingMoneyContainer.innerHTML = `
-            <div class="starting-balance-field">
-                <label for="startingCash">💵 Cash</label>
-                <input
-                    type="number"
-                    id="startingCash"
-                    placeholder="₱0.00"
-                    min="0"
-                    step="0.01"
-                >
-            </div>
-
-            <div class="starting-balance-field">
-                <label for="startingCard">💳 Card</label>
-                <input
-                    type="number"
-                    id="startingCard"
-                    placeholder="₱0.00"
-                    min="0"
-                    step="0.01"
-                >
-            </div>
-
-            <div class="starting-balance-field">
-                <label for="startingBeep">🚆 Beep</label>
-                <input
-                    type="number"
-                    id="startingBeep"
-                    placeholder="₱0.00"
-                    min="0"
-                    step="0.01"
-                >
-            </div>
-
-            <button id="setMoneyBtn">
-                Save Starting Money
-            </button>
-        `;
-    }
-
-
-    // --------------------------------------------------
-    // ADD BEEP PAYMENT METHOD
-    // --------------------------------------------------
-
-    const cardPaymentButton =
-        document.querySelector('[data-payment="Card"]');
-
-    if (
-        cardPaymentButton &&
-        !document.querySelector('[data-payment="Beep"]')
-    ) {
-
-        const beepButton = document.createElement("button");
-
-        beepButton.className = "choice";
-        beepButton.dataset.payment = "Beep";
-        beepButton.innerHTML = "🚆 Beep";
-
-        cardPaymentButton.parentElement.appendChild(beepButton);
-    }
-
-
-    // --------------------------------------------------
-    // TRANSFER MONEY
-    // --------------------------------------------------
-
-    const addTransactionButton =
-        document.getElementById("addTransactionBtn");
-
-    if (
-        addTransactionButton &&
-        !document.getElementById("transferBox")
-    ) {
-
-        const transferBox = document.createElement("div");
-
-        transferBox.id = "transferBox";
-        transferBox.className = "transfer-box";
-
-        transferBox.innerHTML = `
-            <h3>🔄 Transfer Money</h3>
-
-            <div class="transfer-grid">
-
-                <div>
-                    <label for="transferDate">Date</label>
-
-                    <input
-                        type="date"
-                        id="transferDate"
-                    >
-                </div>
-
-                <div>
-                    <label for="transferFrom">From</label>
-
-                    <select id="transferFrom">
-                        <option value="Cash">💵 Cash</option>
-                        <option value="Card">💳 Card</option>
-                        <option value="Beep">🚆 Beep</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label for="transferTo">To</label>
-
-                    <select id="transferTo">
-                        <option value="Card">💳 Card</option>
-                        <option value="Cash">💵 Cash</option>
-                        <option value="Beep">🚆 Beep</option>
-                    </select>
-                </div>
-
-                <div>
-                    <label for="transferAmount">Amount</label>
-
-                    <input
-                        type="number"
-                        id="transferAmount"
-                        placeholder="₱0.00"
-                        min="0"
-                        step="0.01"
-                    >
-                </div>
-
-            </div>
-
-            <button
-                id="transferMoneyBtn"
-                class="secondary-btn transfer-btn"
-            >
-                Transfer Money
-            </button>
-        `;
-
-        addTransactionButton.insertAdjacentElement(
-            "afterend",
-            transferBox
-        );
-    }
-
-
-    // --------------------------------------------------
-    // EVENT FOR SELECTED DATE
-    // --------------------------------------------------
-
-    const dateNavigation =
-        document.querySelector(".date-navigation");
-
-    if (
-        dateNavigation &&
-        !document.getElementById("eventBox")
-    ) {
-
-        const eventBox = document.createElement("div");
-
-        eventBox.id = "eventBox";
-        eventBox.className = "event-box";
-
-        eventBox.innerHTML = `
-            <label for="eventInput">
-                📅 Event / Note for this day
-            </label>
-
-            <div class="event-input-row">
-
-                <input
-                    type="text"
-                    id="eventInput"
-                    placeholder="e.g. School, Gym, Birthday..."
-                >
-
-                <button
-                    id="saveEventBtn"
-                    class="secondary-btn"
-                >
-                    Save
-                </button>
-
-            </div>
-
-            <div
-                id="eventDisplay"
-                class="event-display"
-            ></div>
-        `;
-
-        dateNavigation.insertAdjacentElement(
-            "afterend",
-            eventBox
-        );
-    }
-
-
-    // --------------------------------------------------
-    // SUMMARY REDESIGN
-    // --------------------------------------------------
-
-    const summary =
-        document.querySelector(".summary");
-
-    if (summary) {
-
-        const summaryBoxes =
-            summary.querySelectorAll(".summary-box");
-
-        if (summaryBoxes.length >= 2) {
-
-            summaryBoxes[0].innerHTML = `
-                <h3>💰 Money Breakdown</h3>
-
-                <div class="summary-row">
-                    <span>💵 Cash</span>
-                    <strong id="cashSpent">
-                        ₱0.00
-                    </strong>
-                </div>
-
-                <div class="summary-row">
-                    <span>💳 Card</span>
-                    <strong id="cardSpent">
-                        ₱0.00
-                    </strong>
-                </div>
-
-                <div class="summary-row">
-                    <span>🚆 Beep</span>
-                    <strong id="beepSpent">
-                        ₱0.00
-                    </strong>
-                </div>
-
-                <div class="summary-row remaining">
-                    <span>Total Spent</span>
-                    <strong id="totalSpent">
-                        ₱0.00
-                    </strong>
-                </div>
-            `;
-
-
-            summaryBoxes[1].innerHTML = `
-                <h3>💵 Remaining</h3>
-
-                <div class="summary-row">
-                    <span>💵 Cash</span>
-                    <strong id="cashRemaining">
-                        ₱0.00
-                    </strong>
-                </div>
-
-                <div class="summary-row">
-                    <span>💳 Card</span>
-                    <strong id="cardRemaining">
-                        ₱0.00
-                    </strong>
-                </div>
-
-                <div class="summary-row">
-                    <span>🚆 Beep</span>
-                    <strong id="beepRemaining">
-                        ₱0.00
-                    </strong>
-                </div>
-
-                <div class="summary-row remaining">
-                    <span>Total Remaining</span>
-                    <strong id="totalRemaining">
-                        ₱0.00
-                    </strong>
-                </div>
-            `;
-        }
-
-
-        if (summaryBoxes.length >= 3) {
-
-            const debtBox = summaryBoxes[2];
-
-            const debtHeading =
-                debtBox.querySelector("h3");
-
-            if (debtHeading) {
-                debtHeading.textContent = "🧾 Utang";
-            }
-
-
-            const existingDebtSummary =
-                document.getElementById(
-                    "allDebtSummary"
-                );
-
-            if (!existingDebtSummary) {
-
-                const debtRow =
-                    document.createElement("div");
-
-                debtRow.id = "allDebtSummary";
-                debtRow.className = "summary-row";
-
-                debtRow.innerHTML = `
-                    <span>All Utang</span>
-
-                    <strong id="debtBalance">
-                        ₱0.00
-                    </strong>
-                `;
-
-                const addDebtBtn =
-                    debtBox.querySelector(
-                        "#addDebtBtn"
-                    );
-
-                if (addDebtBtn) {
-                    debtBox.insertBefore(
-                        debtRow,
-                        addDebtBtn
-                    );
-                }
-            }
-        }
-    }
-
-
-    // --------------------------------------------------
-    // ADD EXTRA CSS
-    // --------------------------------------------------
-
-    const style = document.createElement("style");
-
-    style.textContent = `
-
-        .starting-money {
-            align-items: end;
-        }
-
-        .starting-balance-field {
-            flex: 1;
-        }
-
-        .starting-balance-field label {
-            display: block;
-            margin-bottom: 7px;
-        }
-
-        .transfer-box {
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid #ddd;
-        }
-
-        .transfer-box h3 {
-            margin-bottom: 15px;
-        }
-
-        .transfer-grid {
-            display: grid;
-            grid-template-columns:
-                repeat(4, 1fr);
-            gap: 10px;
-            margin-bottom: 12px;
-        }
-
-        .transfer-grid > div {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .transfer-grid select {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid #ccc;
-            border-radius: 8px;
-            background: white;
-            font-size: 15px;
-        }
-
-        .transfer-btn {
-            width: 100%;
-        }
-
-        .event-box {
-            padding: 12px;
-            margin-bottom: 15px;
-            background: #f7f7f7;
-            border-radius: 10px;
-        }
-
-        .event-input-row {
-            display: flex;
-            gap: 8px;
-        }
-
-        .event-input-row input {
-            flex: 1;
-        }
-
-        .event-display {
-            margin-top: 10px;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        .transfer-history {
-            background: #fafafa;
-        }
-
-        @media (max-width: 768px) {
-
-            .starting-money {
-                align-items: stretch;
-            }
-
-            .transfer-grid {
-                display: flex;
-                flex-direction: column;
-                gap: 6px;
-            }
-
-            .transfer-grid select {
-                padding: 8px;
-                font-size: 12px;
-            }
-
-            .transfer-box {
-                margin-top: 15px;
-                padding-top: 12px;
-            }
-
-            .transfer-box h3 {
-                font-size: 13px;
-                margin-bottom: 8px;
-            }
-
-            .event-box {
-                padding: 8px;
-                margin-bottom: 10px;
-            }
-
-            .event-input-row {
-                flex-direction: column;
-                gap: 5px;
-            }
-
-            .event-display {
-                font-size: 10px;
-            }
-        }
-    `;
-
-    document.head.appendChild(style);
+function safeArray(value) {
+    return Array.isArray(value)
+        ? value
+        : [];
 }
 
-
-upgradeInterface();
-
-
-// ======================================================
-// ELEMENTS
-// ======================================================
-
-const startingCashInput =
-    document.getElementById("startingCash");
-
-const startingCardInput =
-    document.getElementById("startingCard");
-
-const startingBeepInput =
-    document.getElementById("startingBeep");
-
-const setMoneyBtn =
-    document.getElementById("setMoneyBtn");
-
-
-const dateInput =
-    document.getElementById("date");
-
-const descriptionInput =
-    document.getElementById("description");
-
-const amountInput =
-    document.getElementById("amount");
-
-const addTransactionBtn =
-    document.getElementById("addTransactionBtn");
-
-
-const historyDate =
-    document.getElementById("historyDate");
-
-const transactionList =
-    document.getElementById("transactionList");
-
-const dailyTotal =
-    document.getElementById("dailyTotal");
-
-const previousDateBtn =
-    document.getElementById("previousDate");
-
-const nextDateBtn =
-    document.getElementById("nextDate");
-
-
-const transferDate =
-    document.getElementById("transferDate");
-
-const transferFrom =
-    document.getElementById("transferFrom");
-
-const transferTo =
-    document.getElementById("transferTo");
-
-const transferAmount =
-    document.getElementById("transferAmount");
-
-const transferMoneyBtn =
-    document.getElementById("transferMoneyBtn");
-
-
-const eventInput =
-    document.getElementById("eventInput");
-
-const eventDisplay =
-    document.getElementById("eventDisplay");
-
-const saveEventBtn =
-    document.getElementById("saveEventBtn");
-
-
-const addDebtBtn =
-    document.getElementById("addDebtBtn");
-
-
-// ======================================================
-// START DATES
-// ======================================================
-
-const today = getToday();
-
-dateInput.value = today;
-historyDate.value = today;
-
-if (transferDate) {
-    transferDate.value = today;
+function uid() {
+    return Date.now() + Math.floor(
+        Math.random() * 100000
+    );
 }
 
-
-// ======================================================
-// STARTING MONEY
-// ======================================================
-
-setMoneyBtn.addEventListener(
-    "click",
-    async function () {
-
-        const cash =
-            Number(startingCashInput.value);
-
-        const card =
-            Number(startingCardInput.value);
-
-        const beep =
-            Number(startingBeepInput.value);
-
-
-        if (
-            isNaN(cash) ||
-            isNaN(card) ||
-            isNaN(beep) ||
-            cash < 0 ||
-            card < 0 ||
-            beep < 0
-        ) {
-
-            alert(
-                "Please enter valid starting balances."
-            );
-
-            return;
-        }
-
-
-        startingBalances = {
-            Cash: cash,
-            Card: card,
-            Beep: beep
-        };
-
-
-        updateSummary();
-
-        await saveData();
-
-        alert(
-            "Starting balances saved!"
-        );
-    }
-);
-
-
-// ======================================================
-// CATEGORY BUTTONS
-// ======================================================
-
-document
-    .querySelectorAll("[data-category]")
-    .forEach(function (button) {
-
-        button.addEventListener(
-            "click",
-            function () {
-
-                selectedCategory =
-                    button.dataset.category;
-
-
-                document
-                    .querySelectorAll(
-                        "[data-category]"
-                    )
-                    .forEach(function (btn) {
-
-                        btn.classList.remove(
-                            "selected"
-                        );
-                    });
-
-
-                button.classList.add(
-                    "selected"
-                );
-            }
-        );
-    });
-
-
-// ======================================================
-// PAYMENT BUTTONS
-// ======================================================
-
-document
-    .querySelectorAll("[data-payment]")
-    .forEach(function (button) {
-
-        button.addEventListener(
-            "click",
-            function () {
-
-                selectedPayment =
-                    button.dataset.payment;
-
-
-                document
-                    .querySelectorAll(
-                        "[data-payment]"
-                    )
-                    .forEach(function (btn) {
-
-                        btn.classList.remove(
-                            "selected"
-                        );
-                    });
-
-
-                button.classList.add(
-                    "selected"
-                );
-            }
-        );
-    });
-
-
-// ======================================================
-// ADD TRANSACTION
-// ======================================================
-
-addTransactionBtn.addEventListener(
-    "click",
-    async function () {
-
-        const date =
-            dateInput.value;
-
-        const description =
-            descriptionInput.value.trim();
-
-        const amount =
-            Number(amountInput.value);
-
-
-        if (date === "") {
-            alert("Please select a date.");
-            return;
-        }
-
-
-        if (description === "") {
-            alert(
-                "Please enter what you spent on."
-            );
-            return;
-        }
-
-
-        if (
-            isNaN(amount) ||
-            amount <= 0
-        ) {
-
-            alert(
-                "Please enter a valid amount."
-            );
-
-            return;
-        }
-
-
-        if (selectedCategory === "") {
-
-            alert(
-                "Please select a category."
-            );
-
-            return;
-        }
-
-
-        if (selectedPayment === "") {
-
-            alert(
-                "Please select a payment method."
-            );
-
-            return;
-        }
-
-
-        const transaction = {
-            id: Date.now(),
-            date: date,
-            description: description,
-            amount: amount,
-            category: selectedCategory,
-            payment: selectedPayment
-        };
-
-
-        transactions.push(transaction);
-
-
-        historyDate.value = date;
-
-        displayTransactions();
-        updateSummary();
-
-        await saveData();
-
-
-        descriptionInput.value = "";
-        amountInput.value = "";
-
-        selectedCategory = "";
-        selectedPayment = "";
-
-
-        document
-            .querySelectorAll(".choice")
-            .forEach(function (button) {
-
-                button.classList.remove(
-                    "selected"
-                );
-            });
-
-
-        alert("Transaction added!");
-    }
-);
-
-
-// ======================================================
-// TRANSFER MONEY
-// ======================================================
-
-transferMoneyBtn.addEventListener(
-    "click",
-    async function () {
-
-        const from =
-            transferFrom.value;
-
-        const to =
-            transferTo.value;
-
-        const amount =
-            Number(transferAmount.value);
-
-        const date =
-            transferDate.value;
-
-
-        if (!date) {
-
-            alert(
-                "Please select a transfer date."
-            );
-
-            return;
-        }
-
-
-        if (from === to) {
-
-            alert(
-                "Please choose two different accounts."
-            );
-
-            return;
-        }
-
-
-        if (
-            isNaN(amount) ||
-            amount <= 0
-        ) {
-
-            alert(
-                "Please enter a valid transfer amount."
-            );
-
-            return;
-        }
-
-
-        const balances =
-            calculateCurrentBalances();
-
-
-        if (amount > balances[from]) {
-
-            alert(
-                `Not enough ${from} balance.
-
-Available: ₱${balances[from].toFixed(2)}`
-            );
-
-            return;
-        }
-
-
-        transfers.push({
-            id: Date.now(),
-            date: date,
-            from: from,
-            to: to,
-            amount: amount
-        });
-
-
-        transferAmount.value = "";
-
-        historyDate.value = date;
-
-        displayTransactions();
-        updateSummary();
-
-        await saveData();
-
-
-        alert(
-            `₱${amount.toFixed(2)} transferred from ${from} to ${to}.`
-        );
-    }
-);
-
-
-// ======================================================
-// CURRENT BALANCES
-// ======================================================
-
-function calculateCurrentBalances() {
-
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+/* =====================================================
+   REAL WALLET
+===================================================== */
+
+function calculateBalances() {
     const balances = {
-        Cash:
-            Number(startingBalances.Cash) || 0,
-
-        Card:
-            Number(startingBalances.Card) || 0,
-
-        Beep:
-            Number(startingBalances.Beep) || 0
+        Cash: 0,
+        Card: 0,
+        Beep: 0
     };
 
+    allowanceEntries.forEach((entry) => {
+        if (
+            balances[entry.account] !== undefined
+        ) {
+            balances[entry.account] +=
+                Number(entry.amount) || 0;
+        }
+    });
 
-    // Subtract spending
-    transactions.forEach(
-        function (transaction) {
-
-            const amount =
+    transactions.forEach((transaction) => {
+        if (
+            balances[transaction.payment] !== undefined
+        ) {
+            balances[transaction.payment] -=
                 Number(transaction.amount) || 0;
-
-            const payment =
-                transaction.payment;
-
-
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    balances,
-                    payment
-                )
-            ) {
-
-                balances[payment] -= amount;
-            }
         }
-    );
+    });
 
+    transfers.forEach((transfer) => {
+        const amount =
+            Number(transfer.amount) || 0;
 
-    // Apply transfers
-    transfers.forEach(
-        function (transfer) {
-
-            const amount =
-                Number(transfer.amount) || 0;
-
-
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    balances,
-                    transfer.from
-                )
-            ) {
-
-                balances[transfer.from] -=
-                    amount;
-            }
-
-
-            if (
-                Object.prototype.hasOwnProperty.call(
-                    balances,
-                    transfer.to
-                )
-            ) {
-
-                balances[transfer.to] +=
-                    amount;
-            }
+        if (
+            balances[transfer.from] !== undefined
+        ) {
+            balances[transfer.from] -= amount;
         }
-    );
 
+        if (
+            balances[transfer.to] !== undefined
+        ) {
+            balances[transfer.to] += amount;
+        }
+    });
 
     return balances;
 }
 
+/* =====================================================
+   SPENDING
+===================================================== */
 
-// ======================================================
-// TRANSACTION HISTORY
-// ======================================================
-
-function displayTransactions() {
-
-    const selectedDate =
-        historyDate.value;
-
-
-    const filteredTransactions =
-        transactions.filter(
-            function (transaction) {
-
-                return (
-                    transaction.date ===
-                    selectedDate
-                );
-            }
+function spendingForDate(date) {
+    return transactions
+        .filter(
+            (transaction) =>
+                transaction.date === date
+        )
+        .reduce(
+            (total, transaction) =>
+                total +
+                (Number(transaction.amount) || 0),
+            0
         );
+}
 
-
-    const filteredTransfers =
-        transfers.filter(
-            function (transfer) {
-
-                return (
-                    transfer.date ===
-                    selectedDate
-                );
-            }
+function categorySpent(category) {
+    return transactions
+        .filter(
+            (transaction) =>
+                transaction.category === category
+        )
+        .reduce(
+            (total, transaction) =>
+                total +
+                (Number(transaction.amount) || 0),
+            0
         );
+}
 
+/* =====================================================
+   OUTFLOW RESERVE
+===================================================== */
 
-    transactionList.innerHTML = "";
+function getSortedPlanDatesBefore(targetDate) {
+    return Object.keys(dailyPlans)
+        .filter(
+            (date) => date < targetDate
+        )
+        .sort();
+}
 
+function calculateOutflowReserveBefore(targetDate) {
+    let reserve = 0;
+
+    const dates =
+        getSortedPlanDatesBefore(targetDate);
+
+    dates.forEach((date) => {
+        const baseAllowance =
+            Number(
+                dailyPlans[date]?.limit
+            ) || 0;
+
+        const spent =
+            spendingForDate(date);
+
+        const availableThatDay =
+            baseAllowance + reserve;
+
+        reserve = Math.max(
+            0,
+            availableThatDay - spent
+        );
+    });
+
+    return reserve;
+}
+
+function calculateDailyBudgetState(date) {
+    const plan =
+        dailyPlans[date] || {
+            event: "",
+            limit: 0
+        };
+
+    const baseAllowance =
+        Number(plan.limit) || 0;
+
+    const reserveBeforeToday =
+        calculateOutflowReserveBefore(date);
+
+    const totalAvailable =
+        baseAllowance +
+        reserveBeforeToday;
+
+    const spentToday =
+        spendingForDate(date);
+
+    const remainingToday =
+        totalAvailable -
+        spentToday;
+
+    return {
+        event:
+            plan.event || "",
+
+        baseAllowance,
+
+        reserveBeforeToday,
+
+        totalAvailable,
+
+        spentToday,
+
+        remainingToday
+    };
+}
+
+/* =====================================================
+   PROGRESS
+===================================================== */
+
+function percentage(spent, available) {
+    available =
+        Number(available) || 0;
 
     if (
-        filteredTransactions.length === 0 &&
-        filteredTransfers.length === 0
+        available <= 0
     ) {
+        return 0;
+    }
 
-        transactionList.innerHTML = `
+    return Math.min(
+        100,
+        Math.max(
+            0,
+            (spent / available) * 100
+        )
+    );
+}
+
+function setProgress(
+    element,
+    spent,
+    available
+) {
+    const percent =
+        percentage(
+            spent,
+            available
+        );
+
+    element.style.width =
+        `${percent}%`;
+
+    element.classList.toggle(
+        "over",
+        Number(available) > 0 &&
+        Number(spent) >
+        Number(available)
+    );
+}
+
+/* =====================================================
+   DASHBOARD
+===================================================== */
+
+function updateDashboard() {
+    const balances =
+        calculateBalances();
+
+    const walletTotal =
+        balances.Cash +
+        balances.Card +
+        balances.Beep;
+
+    $("sidebarCash").textContent =
+        money(balances.Cash);
+
+    $("sidebarCard").textContent =
+        money(balances.Card);
+
+    $("sidebarBeep").textContent =
+        money(balances.Beep);
+
+    $("sidebarTotal").textContent =
+        money(walletTotal);
+
+    $("cashBalance").textContent =
+        money(balances.Cash);
+
+    $("cardBalance").textContent =
+        money(balances.Card);
+
+    $("beepBalance").textContent =
+        money(balances.Beep);
+
+    $("walletTotal").textContent =
+        money(walletTotal);
+
+    const date =
+        $("dashboardDate").value;
+
+    const state =
+        calculateDailyBudgetState(date);
+
+    $("eventTitle").textContent =
+        state.event ||
+        "No event set";
+
+    $("dailyAvailableBig").textContent =
+        money(
+            state.totalAvailable
+        );
+
+    $("dailyAvailableText").textContent =
+        `${money(
+            state.remainingToday
+        )} remaining after today's spending`;
+
+    $("outflowReserve").textContent =
+        `+${money(
+            state.reserveBeforeToday
+        )}`;
+
+    $("baseAllowance").textContent =
+        money(
+            state.baseAllowance
+        );
+
+    $("reserveBreakdown").textContent =
+        `+${money(
+            state.reserveBeforeToday
+        )}`;
+
+    $("spentToday").textContent =
+        `-${money(
+            state.spentToday
+        )}`;
+
+    $("remainingToday").textContent =
+        money(
+            state.remainingToday
+        );
+
+    $("dailySpentLabel").textContent =
+        `Spent ${money(
+            state.spentToday
+        )}`;
+
+    $("dailyPercentLabel").textContent =
+        state.totalAvailable > 0
+            ? `${Math.round(
+                (
+                    state.spentToday /
+                    state.totalAvailable
+                ) *
+                100
+            )}%`
+            : "0%";
+
+    setProgress(
+        $("dailyProgress"),
+        state.spentToday,
+        state.totalAvailable
+    );
+
+    updateCategoryCard(
+        "Needs",
+        "needs"
+    );
+
+    updateCategoryCard(
+        "Wants",
+        "wants"
+    );
+
+    updateCategoryCard(
+        "Savings",
+        "savings"
+    );
+}
+
+function updateCategoryCard(
+    category,
+    prefix
+) {
+    const budget =
+        Number(
+            categoryBudgets[category]
+        ) || 0;
+
+    const spent =
+        categorySpent(category);
+
+    const remaining =
+        budget - spent;
+
+    $(`${prefix}Remaining`).textContent =
+        money(remaining);
+
+    $(`${prefix}BudgetLabel`).textContent =
+        `${money(spent)} / ${money(budget)}`;
+
+    setProgress(
+        $(`${prefix}Progress`),
+        spent,
+        budget
+    );
+}
+
+/* =====================================================
+   HISTORY
+===================================================== */
+
+function renderHistory() {
+    const date =
+        $("historyDate").value;
+
+    const transactionsToday =
+        transactions.filter(
+            (transaction) =>
+                transaction.date === date
+        );
+
+    const transfersToday =
+        transfers.filter(
+            (transfer) =>
+                transfer.date === date
+        );
+
+    const allowanceToday =
+        allowanceEntries.filter(
+            (allowance) =>
+                allowance.date === date
+        );
+
+    const list =
+        $("transactionList");
+
+    list.innerHTML = "";
+
+    const state =
+        calculateDailyBudgetState(date);
+
+    if (
+        dailyPlans[date]
+    ) {
+        $("historyEvent").textContent =
+            `${state.event || "No event"} • Base ${money(
+                state.baseAllowance
+            )} • Reserve +${money(
+                state.reserveBeforeToday
+            )}`;
+    } else {
+        $("historyEvent").textContent =
+            "No event saved for this date.";
+    }
+
+    const rows = [
+        ...transactionsToday.map(
+            (item) => ({
+                type: "transaction",
+                time: item.id,
+                item
+            })
+        ),
+
+        ...transfersToday.map(
+            (item) => ({
+                type: "transfer",
+                time: item.id,
+                item
+            })
+        ),
+
+        ...allowanceToday.map(
+            (item) => ({
+                type: "allowance",
+                time: item.id,
+                item
+            })
+        )
+    ];
+
+    rows.sort(
+        (a, b) =>
+            b.time - a.time
+    );
+
+    if (
+        rows.length === 0
+    ) {
+        list.innerHTML = `
             <p class="empty">
                 No transactions for this date.
             </p>
         `;
-
-        dailyTotal.textContent =
-            "₱0.00";
-
-        displayEvent();
-
-        return;
     }
 
+    rows.forEach((row) => {
+        const wrapper =
+            document.createElement(
+                "div"
+            );
 
-    let total = 0;
+        wrapper.className =
+            "transaction-item";
 
+        const info =
+            document.createElement(
+                "div"
+            );
 
-    // --------------------------------------------------
-    // NORMAL TRANSACTIONS
-    // --------------------------------------------------
+        info.className =
+            "info";
 
-    filteredTransactions.forEach(
-        function (transaction) {
+        const actions =
+            document.createElement(
+                "div"
+            );
 
-            const amount =
-                Number(transaction.amount) || 0;
+        actions.className =
+            "item-actions";
 
-            total += amount;
+        const price =
+            document.createElement(
+                "strong"
+            );
 
+        const deleteButton =
+            document.createElement(
+                "button"
+            );
 
-            const item =
-                document.createElement("div");
+        deleteButton.className =
+            "delete-btn";
 
-            item.className =
-                "transaction";
+        deleteButton.textContent =
+            "Delete";
 
+        if (
+            row.type ===
+            "transaction"
+        ) {
+            info.innerHTML = `
+                <strong>
+                    ${escapeHtml(
+                        row.item.description
+                    )}
+                </strong>
 
-            const info =
-                document.createElement("div");
+                <span>
+                    ${escapeHtml(
+                        row.item.category
+                    )}
 
-            info.className =
-                "transaction-info";
+                    ${
+                        row.item.subcategory
+                            ? ` • ${escapeHtml(
+                                row.item.subcategory
+                            )}`
+                            : ""
+                    }
 
-
-            const description =
-                document.createElement("strong");
-
-            description.textContent =
-                transaction.description;
-
-
-            const details =
-                document.createElement("span");
-
-            details.textContent =
-                `${transaction.category} • ${transaction.payment}`;
-
-
-            info.appendChild(description);
-            info.appendChild(details);
-
-
-            const right =
-                document.createElement("div");
-
-            right.className =
-                "transaction-right";
-
-
-            const price =
-                document.createElement("strong");
+                    • ${escapeHtml(
+                        row.item.payment
+                    )}
+                </span>
+            `;
 
             price.textContent =
-                `₱${amount.toFixed(2)}`;
-
-
-            const deleteButton =
-                document.createElement("button");
-
-            deleteButton.className =
-                "delete-btn";
-
-            deleteButton.textContent =
-                "🗑️";
-
+                money(
+                    row.item.amount
+                );
 
             deleteButton.addEventListener(
                 "click",
-                function () {
-
+                () =>
                     deleteTransaction(
-                        transaction.id
-                    );
-                }
-            );
-
-
-            right.appendChild(price);
-            right.appendChild(
-                deleteButton
-            );
-
-
-            item.appendChild(info);
-            item.appendChild(right);
-
-
-            transactionList.appendChild(
-                item
+                        row.item.id
+                    )
             );
         }
-    );
 
+        if (
+            row.type ===
+            "transfer"
+        ) {
+            info.innerHTML = `
+                <strong>
+                    🔄 Money Transfer
+                </strong>
 
-    // --------------------------------------------------
-    // TRANSFER HISTORY
-    // --------------------------------------------------
-
-    filteredTransfers.forEach(
-        function (transfer) {
-
-            const amount =
-                Number(transfer.amount) || 0;
-
-
-            const item =
-                document.createElement("div");
-
-            item.className =
-                "transaction transfer-history";
-
-
-            const info =
-                document.createElement("div");
-
-            info.className =
-                "transaction-info";
-
-
-            const title =
-                document.createElement("strong");
-
-            title.textContent =
-                "🔄 Money Transfer";
-
-
-            const details =
-                document.createElement("span");
-
-            details.textContent =
-                `${transfer.from} → ${transfer.to}`;
-
-
-            info.appendChild(title);
-            info.appendChild(details);
-
-
-            const right =
-                document.createElement("div");
-
-            right.className =
-                "transaction-right";
-
-
-            const price =
-                document.createElement("strong");
+                <span>
+                    ${escapeHtml(
+                        row.item.from
+                    )}
+                    →
+                    ${escapeHtml(
+                        row.item.to
+                    )}
+                </span>
+            `;
 
             price.textContent =
-                `₱${amount.toFixed(2)}`;
-
-
-            const deleteButton =
-                document.createElement("button");
-
-            deleteButton.className =
-                "delete-btn";
-
-            deleteButton.textContent =
-                "🗑️";
-
+                money(
+                    row.item.amount
+                );
 
             deleteButton.addEventListener(
                 "click",
-                function () {
-
+                () =>
                     deleteTransfer(
-                        transfer.id
-                    );
-                }
-            );
-
-
-            right.appendChild(price);
-            right.appendChild(
-                deleteButton
-            );
-
-
-            item.appendChild(info);
-            item.appendChild(right);
-
-
-            transactionList.appendChild(
-                item
+                        row.item.id
+                    )
             );
         }
-    );
 
+        if (
+            row.type ===
+            "allowance"
+        ) {
+            info.innerHTML = `
+                <strong>
+                    💰 Allowance Added
+                </strong>
 
-    // Transfers are NOT included here
-    dailyTotal.textContent =
-        `₱${total.toFixed(2)}`;
+                <span>
+                    Added to
+                    ${escapeHtml(
+                        row.item.account
+                    )}
+                </span>
+            `;
 
+            price.textContent =
+                `+${money(
+                    row.item.amount
+                )}`;
 
-    displayEvent();
+            deleteButton.addEventListener(
+                "click",
+                () =>
+                    deleteAllowance(
+                        row.item.id
+                    )
+            );
+        }
+
+        actions.append(
+            price,
+            deleteButton
+        );
+
+        wrapper.append(
+            info,
+            actions
+        );
+
+        list.appendChild(
+            wrapper
+        );
+    });
+
+    $("dailyTotal").textContent =
+        money(
+            spendingForDate(date)
+        );
 }
 
+/* =====================================================
+   LIST ITEM
+===================================================== */
 
-// ======================================================
-// DELETE TRANSACTION
-// ======================================================
+function makeListItem(
+    title,
+    subtitle,
+    amount,
+    deleteHandler
+) {
+    const item =
+        document.createElement(
+            "div"
+        );
 
-async function deleteTransaction(id) {
+    item.className =
+        "list-item";
 
-    const confirmed = confirm(
-        "Delete this transaction?"
+    const info =
+        document.createElement(
+            "div"
+        );
+
+    info.className =
+        "info";
+
+    info.innerHTML = `
+        <strong>
+            ${escapeHtml(title)}
+        </strong>
+
+        <span>
+            ${escapeHtml(subtitle)}
+        </span>
+    `;
+
+    const actions =
+        document.createElement(
+            "div"
+        );
+
+    actions.className =
+        "item-actions";
+
+    const value =
+        document.createElement(
+            "strong"
+        );
+
+    value.textContent =
+        amount;
+
+    const remove =
+        document.createElement(
+            "button"
+        );
+
+    remove.className =
+        "delete-btn";
+
+    remove.textContent =
+        "Delete";
+
+    remove.addEventListener(
+        "click",
+        deleteHandler
     );
 
+    actions.append(
+        value,
+        remove
+    );
 
-    if (!confirmed) {
+    item.append(
+        info,
+        actions
+    );
+
+    return item;
+}
+
+/* =====================================================
+   ALLOWANCE LIST
+===================================================== */
+
+function renderAllowanceList() {
+    const list =
+        $("allowanceList");
+
+    list.innerHTML = "";
+
+    const sorted =
+        [...allowanceEntries]
+            .sort(
+                (a, b) =>
+                    b.id - a.id
+            )
+            .slice(
+                0,
+                10
+            );
+
+    if (
+        sorted.length === 0
+    ) {
+        list.innerHTML = `
+            <p class="empty">
+                No allowance entries yet.
+            </p>
+        `;
+
         return;
     }
 
-
-    transactions =
-        transactions.filter(
-            function (transaction) {
-
-                return (
-                    transaction.id !== id
-                );
-            }
+    sorted.forEach((entry) => {
+        list.appendChild(
+            makeListItem(
+                `Allowance → ${entry.account}`,
+                entry.date,
+                money(entry.amount),
+                () =>
+                    deleteAllowance(
+                        entry.id
+                    )
+            )
         );
-
-
-    displayTransactions();
-    updateSummary();
-
-    await saveData();
+    });
 }
 
+/* =====================================================
+   TRANSFER LIST
+===================================================== */
 
-// ======================================================
-// DELETE TRANSFER
-// ======================================================
+function renderTransferList() {
+    const list =
+        $("transferList");
 
-async function deleteTransfer(id) {
+    list.innerHTML = "";
 
-    const confirmed = confirm(
-        "Delete this transfer?"
-    );
+    const sorted =
+        [...transfers]
+            .sort(
+                (a, b) =>
+                    b.id - a.id
+            )
+            .slice(
+                0,
+                10
+            );
 
+    if (
+        sorted.length === 0
+    ) {
+        list.innerHTML = `
+            <p class="empty">
+                No transfers yet.
+            </p>
+        `;
 
-    if (!confirmed) {
         return;
     }
 
-
-    transfers =
-        transfers.filter(
-            function (transfer) {
-
-                return (
-                    transfer.id !== id
-                );
-            }
+    sorted.forEach((entry) => {
+        list.appendChild(
+            makeListItem(
+                `${entry.from} → ${entry.to}`,
+                entry.date,
+                money(entry.amount),
+                () =>
+                    deleteTransfer(
+                        entry.id
+                    )
+            )
         );
-
-
-    displayTransactions();
-    updateSummary();
-
-    await saveData();
+    });
 }
 
+/* =====================================================
+   UTANG LIST
+===================================================== */
 
-// ======================================================
-// DATE NAVIGATION
-// ======================================================
+function renderDebts() {
+    const list =
+        $("debtList");
 
-previousDateBtn.addEventListener(
-    "click",
-    function () {
+    list.innerHTML = "";
 
-        const currentDate =
-            new Date(
-                historyDate.value +
-                "T00:00:00"
-            );
-
-
-        currentDate.setDate(
-            currentDate.getDate() - 1
+    const total =
+        debts.reduce(
+            (sum, debt) =>
+                sum +
+                (
+                    Number(
+                        debt.amount
+                    ) || 0
+                ),
+            0
         );
 
-
-        historyDate.value =
-            formatDate(currentDate);
-
-
-        displayTransactions();
-    }
-);
-
-
-nextDateBtn.addEventListener(
-    "click",
-    function () {
-
-        const currentDate =
-            new Date(
-                historyDate.value +
-                "T00:00:00"
-            );
-
-
-        currentDate.setDate(
-            currentDate.getDate() + 1
-        );
-
-
-        historyDate.value =
-            formatDate(currentDate);
-
-
-        displayTransactions();
-    }
-);
-
-
-historyDate.addEventListener(
-    "change",
-    function () {
-
-        displayTransactions();
-    }
-);
-
-
-// ======================================================
-// EVENT / NOTE
-// ======================================================
-
-saveEventBtn.addEventListener(
-    "click",
-    async function () {
-
-        const selectedDate =
-            historyDate.value;
-
-        const text =
-            eventInput.value.trim();
-
-
-        if (!selectedDate) {
-
-            alert(
-                "Please select a date."
-            );
-
-            return;
-        }
-
-
-        if (text === "") {
-
-            delete events[selectedDate];
-
-        } else {
-
-            events[selectedDate] =
-                text;
-        }
-
-
-        displayEvent();
-
-        await saveData();
-
-
-        alert(
-            text === ""
-                ? "Event removed!"
-                : "Event saved!"
-        );
-    }
-);
-
-
-function displayEvent() {
-
-    const selectedDate =
-        historyDate.value;
-
-
-    const text =
-        events[selectedDate] || "";
-
-
-    eventInput.value = text;
-
-
-    if (text === "") {
-
-        eventDisplay.textContent =
-            "No event saved for this date.";
-
-    } else {
-
-        eventDisplay.textContent =
-            `📌 ${text}`;
-    }
-}
-
-
-// ======================================================
-// ADD UTANG
-// ======================================================
-
-addDebtBtn.addEventListener(
-    "click",
-    async function () {
-
-        const person = prompt(
-            "Name of the person:"
-        );
-
-
-        if (
-            person === null ||
-            person.trim() === ""
-        ) {
-
-            return;
-        }
-
-
-        const amountText = prompt(
-            "How much do they owe you?"
-        );
-
-
-        if (amountText === null) {
-            return;
-        }
-
-
-        const amount =
-            Number(amountText);
-
-
-        if (
-            isNaN(amount) ||
-            amount <= 0
-        ) {
-
-            alert(
-                "Please enter a valid amount."
-            );
-
-            return;
-        }
-
-
-        const debt = {
-            id: Date.now(),
-            person: person.trim(),
-            amount: amount
-        };
-
-
-        debts.push(debt);
-
-
-        displayDebts();
-        updateSummary();
-
-        await saveData();
-
-
-        alert(
-            `${person.trim()} added!\nThey owe you ₱${amount.toFixed(2)}`
-        );
-    }
-);
-
-
-// ======================================================
-// DISPLAY UTANG
-// ======================================================
-
-function displayDebts() {
-
-    const debtList =
-        document.getElementById(
-            "debtList"
-        );
-
-
-    debtList.innerHTML = "";
-
-
-    if (debts.length === 0) {
-
-        debtList.innerHTML = `
+    $("debtBalance").textContent =
+        money(total);
+
+    if (
+        debts.length === 0
+    ) {
+        list.innerHTML = `
             <p class="empty">
                 No utang recorded.
             </p>
@@ -1619,785 +915,1178 @@ function displayDebts() {
         return;
     }
 
-
-    debts.forEach(
-        function (debt) {
-
+    [...debts]
+        .sort(
+            (a, b) =>
+                b.id - a.id
+        )
+        .forEach((debt) => {
             const item =
-                document.createElement("div");
+                document.createElement(
+                    "div"
+                );
 
             item.className =
-                "debt-item";
-
+                "list-item";
 
             const info =
-                document.createElement("div");
+                document.createElement(
+                    "div"
+                );
 
+            info.className =
+                "info";
 
-            const person =
-                document.createElement("strong");
+            info.innerHTML = `
+                <strong>
+                    ${escapeHtml(
+                        debt.name
+                    )}
+                </strong>
 
-            person.textContent =
-                debt.person;
+                <span>
+                    Owes you
+                </span>
+            `;
 
+            const actions =
+                document.createElement(
+                    "div"
+                );
 
-            const lineBreak =
-                document.createElement("br");
-
+            actions.className =
+                "item-actions";
 
             const amount =
-                document.createElement("span");
+                document.createElement(
+                    "strong"
+                );
 
             amount.textContent =
-                `₱${Number(
+                money(
                     debt.amount
-                ).toFixed(2)}`;
+                );
 
+            const edit =
+                document.createElement(
+                    "button"
+                );
 
-            info.appendChild(person);
-            info.appendChild(lineBreak);
-            info.appendChild(amount);
+            edit.className =
+                "edit-btn";
 
+            edit.textContent =
+                "Edit";
 
-            const buttons =
-                document.createElement("div");
-
-
-            const editButton =
-                document.createElement("button");
-
-            editButton.className =
-                "delete-btn edit-debt-btn";
-
-            editButton.textContent =
-                "✏️";
-
-
-            editButton.addEventListener(
+            edit.addEventListener(
                 "click",
-                function () {
-
+                () =>
                     editDebt(
                         debt.id
-                    );
-                }
+                    )
             );
 
+            const remove =
+                document.createElement(
+                    "button"
+                );
 
-            const deleteButton =
-                document.createElement("button");
+            remove.className =
+                "delete-btn";
 
-            deleteButton.className =
-                "delete-btn delete-debt-btn";
+            remove.textContent =
+                "Delete";
 
-            deleteButton.textContent =
-                "🗑️";
-
-
-            deleteButton.addEventListener(
+            remove.addEventListener(
                 "click",
-                function () {
-
+                () =>
                     deleteDebt(
                         debt.id
-                    );
-                }
+                    )
             );
 
-
-            buttons.appendChild(
-                editButton
+            actions.append(
+                amount,
+                edit,
+                remove
             );
 
-            buttons.appendChild(
-                deleteButton
+            item.append(
+                info,
+                actions
             );
 
-
-            item.appendChild(info);
-            item.appendChild(buttons);
-
-
-            debtList.appendChild(
+            list.appendChild(
                 item
             );
-        }
-    );
+        });
 }
 
+/* =====================================================
+   ADD TRANSACTION
+===================================================== */
 
-// ======================================================
-// EDIT UTANG
-// ======================================================
+async function addTransaction() {
+    const date =
+        $("transactionDate").value;
 
-async function editDebt(id) {
+    const description =
+        $("description")
+            .value
+            .trim();
 
-    const debt =
-        debts.find(
-            function (debt) {
-
-                return (
-                    debt.id === id
-                );
-            }
+    const amount =
+        Number(
+            $("amount").value
         );
 
+    const subcategory =
+        $("subcategory")
+            .value
+            .trim();
+
+    const payment =
+        $("paymentMethod").value;
+
+    if (
+        !date ||
+        !description ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+        alert(
+            "Please complete the transaction details and enter a valid amount."
+        );
+
+        return;
+    }
+
+    const balances =
+        calculateBalances();
+
+    if (
+        amount >
+        balances[payment]
+    ) {
+        alert(
+            `Not enough ${payment} balance. Available: ${money(
+                balances[payment]
+            )}`
+        );
+
+        return;
+    }
+
+    if (
+        selectedCategory ===
+        "Savings"
+    ) {
+        const okay =
+            confirm(
+                "This transaction will use your Emergency Savings category. Continue?"
+            );
+
+        if (!okay) {
+            return;
+        }
+    }
+
+    transactions.push({
+        id: uid(),
+        date,
+        description,
+        amount,
+        category:
+            selectedCategory,
+        subcategory,
+        payment
+    });
+
+    $("description").value = "";
+    $("amount").value = "";
+    $("subcategory").value = "";
+
+    $("historyDate").value =
+        date;
+
+    $("dashboardDate").value =
+        date;
+
+    await saveData();
+
+    refreshAll();
+}
+
+/* =====================================================
+   ADD ALLOWANCE
+===================================================== */
+
+async function addAllowance() {
+    const date =
+        $("allowanceDate").value;
+
+    const account =
+        $("allowanceAccount").value;
+
+    const amount =
+        Number(
+            $("allowanceAmount").value
+        );
+
+    if (
+        !date ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+        alert(
+            "Enter a valid allowance amount."
+        );
+
+        return;
+    }
+
+    allowanceEntries.push({
+        id: uid(),
+        date,
+        account,
+        amount
+    });
+
+    $("allowanceAmount").value =
+        "";
+
+    await saveData();
+
+    refreshAll();
+}
+
+/* =====================================================
+   TRANSFER
+===================================================== */
+
+async function addTransfer() {
+    const date =
+        $("transferDate").value;
+
+    const from =
+        $("transferFrom").value;
+
+    const to =
+        $("transferTo").value;
+
+    const amount =
+        Number(
+            $("transferAmount").value
+        );
+
+    if (
+        !date ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+        alert(
+            "Enter a valid transfer amount."
+        );
+
+        return;
+    }
+
+    if (
+        from === to
+    ) {
+        alert(
+            "Choose two different accounts."
+        );
+
+        return;
+    }
+
+    const balances =
+        calculateBalances();
+
+    if (
+        amount >
+        balances[from]
+    ) {
+        alert(
+            `Not enough ${from} balance. Available: ${money(
+                balances[from]
+            )}`
+        );
+
+        return;
+    }
+
+    transfers.push({
+        id: uid(),
+        date,
+        from,
+        to,
+        amount
+    });
+
+    $("transferAmount").value =
+        "";
+
+    await saveData();
+
+    refreshAll();
+}
+
+/* =====================================================
+   UTANG
+===================================================== */
+
+async function addDebt() {
+    const name =
+        $("debtName")
+            .value
+            .trim();
+
+    const amount =
+        Number(
+            $("debtAmount").value
+        );
+
+    if (
+        !name ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+        alert(
+            "Enter a name and valid amount."
+        );
+
+        return;
+    }
+
+    debts.push({
+        id: uid(),
+        name,
+        amount
+    });
+
+    $("debtName").value =
+        "";
+
+    $("debtAmount").value =
+        "";
+
+    await saveData();
+
+    renderDebts();
+}
+
+async function editDebt(id) {
+    const debt =
+        debts.find(
+            (item) =>
+                item.id === id
+        );
 
     if (!debt) {
         return;
     }
 
-
-    const newPerson = prompt(
-        "Name of the person:",
-        debt.person
-    );
-
+    const newName =
+        prompt(
+            "Name:",
+            debt.name
+        );
 
     if (
-        newPerson === null ||
-        newPerson.trim() === ""
+        newName === null
     ) {
-
         return;
     }
 
+    const newAmountRaw =
+        prompt(
+            "Amount:",
+            debt.amount
+        );
 
-    const newAmountText = prompt(
-        "How much do they owe you?",
-        debt.amount
-    );
-
-
-    if (newAmountText === null) {
+    if (
+        newAmountRaw === null
+    ) {
         return;
     }
-
 
     const newAmount =
-        Number(newAmountText);
-
+        Number(
+            newAmountRaw
+        );
 
     if (
-        isNaN(newAmount) ||
+        !newName.trim() ||
+        !Number.isFinite(
+            newAmount
+        ) ||
         newAmount <= 0
     ) {
-
         alert(
-            "Please enter a valid amount."
+            "Invalid debt details."
         );
 
         return;
     }
 
-
-    debt.person =
-        newPerson.trim();
+    debt.name =
+        newName.trim();
 
     debt.amount =
         newAmount;
 
-
-    displayDebts();
-    updateSummary();
-
     await saveData();
 
-
-    alert("Utang updated!");
+    renderDebts();
 }
 
+/* =====================================================
+   DELETE
+===================================================== */
 
-// ======================================================
-// DELETE UTANG
-// ======================================================
-
-async function deleteDebt(id) {
-
-    const confirmed = confirm(
-        "Delete this utang?"
-    );
-
-
-    if (!confirmed) {
+async function deleteTransaction(id) {
+    if (
+        !confirm(
+            "Delete this transaction?"
+        )
+    ) {
         return;
     }
 
+    transactions =
+        transactions.filter(
+            (item) =>
+                item.id !== id
+        );
+
+    await saveData();
+
+    refreshAll();
+}
+
+async function deleteTransfer(id) {
+    if (
+        !confirm(
+            "Delete this transfer?"
+        )
+    ) {
+        return;
+    }
+
+    transfers =
+        transfers.filter(
+            (item) =>
+                item.id !== id
+        );
+
+    await saveData();
+
+    refreshAll();
+}
+
+async function deleteAllowance(id) {
+    if (
+        !confirm(
+            "Delete this allowance entry?"
+        )
+    ) {
+        return;
+    }
+
+    allowanceEntries =
+        allowanceEntries.filter(
+            (item) =>
+                item.id !== id
+        );
+
+    await saveData();
+
+    refreshAll();
+}
+
+async function deleteDebt(id) {
+    if (
+        !confirm(
+            "Delete this utang?"
+        )
+    ) {
+        return;
+    }
 
     debts =
         debts.filter(
-            function (debt) {
-
-                return (
-                    debt.id !== id
-                );
-            }
+            (item) =>
+                item.id !== id
         );
-
-
-    displayDebts();
-    updateSummary();
 
     await saveData();
+
+    renderDebts();
 }
 
+/* =====================================================
+   DAILY PLAN
+===================================================== */
 
-// ======================================================
-// SUMMARY
-// ======================================================
+async function saveDailyPlan() {
+    const date =
+        $("dashboardDate").value;
 
-function updateSummary() {
+    const event =
+        $("eventName")
+            .value
+            .trim();
 
-    let cashSpent = 0;
-    let cardSpent = 0;
-    let beepSpent = 0;
-
-    let totalDebt = 0;
-
-
-    transactions.forEach(
-        function (transaction) {
-
-            const amount =
-                Number(
-                    transaction.amount
-                ) || 0;
-
-
-            if (
-                transaction.payment ===
-                "Cash"
-            ) {
-
-                cashSpent += amount;
-            }
-
-
-            if (
-                transaction.payment ===
-                "Card"
-            ) {
-
-                cardSpent += amount;
-            }
-
-
-            if (
-                transaction.payment ===
-                "Beep"
-            ) {
-
-                beepSpent += amount;
-            }
-        }
-    );
-
-
-    debts.forEach(
-        function (debt) {
-
-            totalDebt +=
-                Number(debt.amount) || 0;
-        }
-    );
-
-
-    const totalSpent =
-        cashSpent +
-        cardSpent +
-        beepSpent;
-
-
-    const balances =
-        calculateCurrentBalances();
-
-
-    const totalRemaining =
-        balances.Cash +
-        balances.Card +
-        balances.Beep;
-
-
-    document
-        .getElementById(
-            "cashSpent"
-        )
-        .textContent =
-            `₱${cashSpent.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "cardSpent"
-        )
-        .textContent =
-            `₱${cardSpent.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "beepSpent"
-        )
-        .textContent =
-            `₱${beepSpent.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "totalSpent"
-        )
-        .textContent =
-            `₱${totalSpent.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "cashRemaining"
-        )
-        .textContent =
-            `₱${balances.Cash.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "cardRemaining"
-        )
-        .textContent =
-            `₱${balances.Card.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "beepRemaining"
-        )
-        .textContent =
-            `₱${balances.Beep.toFixed(2)}`;
-
-
-    document
-        .getElementById(
-            "totalRemaining"
-        )
-        .textContent =
-            `₱${totalRemaining.toFixed(2)}`;
-
-
-    const debtBalance =
-        document.getElementById(
-            "debtBalance"
+    const limit =
+        Number(
+            $("dailyLimit").value
         );
 
+    if (
+        !date ||
+        !Number.isFinite(limit) ||
+        limit < 0
+    ) {
+        alert(
+            "Enter a valid base allowance."
+        );
 
-    if (debtBalance) {
-
-        debtBalance.textContent =
-            `₱${totalDebt.toFixed(2)}`;
+        return;
     }
+
+    dailyPlans[date] = {
+        event,
+        limit
+    };
+
+    await saveData();
+
+    closeModal();
+
+    refreshAll();
 }
 
+/* =====================================================
+   CATEGORY BUDGET
+===================================================== */
 
-// ======================================================
-// LOCAL STORAGE BACKUP
-// ======================================================
+async function saveBudgets() {
+    const needs =
+        Number(
+            $("needsBudget").value
+        );
 
-function saveLocalBackup() {
+    const wants =
+        Number(
+            $("wantsBudget").value
+        );
 
-    localStorage.setItem(
-        "budgetTransactions",
-        JSON.stringify(
-            transactions
-        )
-    );
+    const savings =
+        Number(
+            $("savingsBudget").value
+        );
 
+    if (
+        [needs, wants, savings]
+            .some(
+                (value) =>
+                    !Number.isFinite(
+                        value
+                    ) ||
+                    value < 0
+            )
+    ) {
+        alert(
+            "Enter valid category budgets."
+        );
 
-    localStorage.setItem(
-        "budgetDebts",
-        JSON.stringify(
-            debts
-        )
-    );
+        return;
+    }
 
+    categoryBudgets = {
+        Needs: needs,
+        Wants: wants,
+        Savings: savings
+    };
 
-    localStorage.setItem(
-        "budgetTransfers",
-        JSON.stringify(
-            transfers
-        )
-    );
+    await saveData();
 
+    closeModal();
 
-    localStorage.setItem(
-        "budgetEvents",
-        JSON.stringify(
-            events
-        )
-    );
-
-
-    localStorage.setItem(
-        "budgetStartingBalances",
-        JSON.stringify(
-            startingBalances
-        )
-    );
+    updateDashboard();
 }
 
+/* =====================================================
+   MODALS
+===================================================== */
 
-// ======================================================
-// LOAD LOCAL BACKUP
-// ======================================================
+function openModal(panelId) {
+    $("modalBackdrop")
+        .classList
+        .remove("hidden");
 
-function loadLocalBackup() {
+    document
+        .querySelectorAll(
+            "[data-modal-panel]"
+        )
+        .forEach(
+            (panel) =>
+                panel
+                    .classList
+                    .add("hidden")
+        );
 
-    try {
+    $(panelId)
+        .classList
+        .remove("hidden");
 
-        const savedTransactions =
-            localStorage.getItem(
-                "budgetTransactions"
-            );
-
-        const savedDebts =
-            localStorage.getItem(
-                "budgetDebts"
-            );
-
-        const savedTransfers =
-            localStorage.getItem(
-                "budgetTransfers"
-            );
-
-        const savedEvents =
-            localStorage.getItem(
-                "budgetEvents"
-            );
-
-        const savedBalances =
-            localStorage.getItem(
-                "budgetStartingBalances"
-            );
-
-
-        if (savedTransactions) {
-
-            transactions =
-                JSON.parse(
-                    savedTransactions
-                );
-        }
-
-
-        if (savedDebts) {
-
-            debts =
-                JSON.parse(
-                    savedDebts
-                );
-        }
-
-
-        if (savedTransfers) {
-
-            transfers =
-                JSON.parse(
-                    savedTransfers
-                );
-        }
-
-
-        if (savedEvents) {
-
-            events =
-                JSON.parse(
-                    savedEvents
-                );
-        }
-
-
-        if (savedBalances) {
-
-            const balances =
-                JSON.parse(
-                    savedBalances
-                );
-
-
-            startingBalances = {
-                Cash:
-                    Number(
-                        balances.Cash
-                    ) || 0,
-
-                Card:
-                    Number(
-                        balances.Card
-                    ) || 0,
-
-                Beep:
-                    Number(
-                        balances.Beep
-                    ) || 0
+    if (
+        panelId ===
+        "dailyPlanPanel"
+    ) {
+        const plan =
+            dailyPlans[
+                $("dashboardDate").value
+            ] || {
+                event: "",
+                limit: 0
             };
 
-        } else {
+        $("eventName").value =
+            plan.event || "";
 
-            // OLD VERSION MIGRATION
-            const oldStartingMoney =
-                localStorage.getItem(
-                    "budgetStartingMoney"
-                );
+        $("dailyLimit").value =
+            Number(
+                plan.limit
+            ) || 0;
+    }
 
+    if (
+        panelId ===
+        "budgetPanel"
+    ) {
+        $("needsBudget").value =
+            Number(
+                categoryBudgets.Needs
+            ) || 0;
 
-            if (
-                oldStartingMoney !== null
-            ) {
+        $("wantsBudget").value =
+            Number(
+                categoryBudgets.Wants
+            ) || 0;
 
-                startingBalances.Cash =
-                    Number(
-                        oldStartingMoney
-                    ) || 0;
-            }
-        }
+        $("savingsBudget").value =
+            Number(
+                categoryBudgets.Savings
+            ) || 0;
+    }
 
-    } catch (error) {
+    if (
+        panelId ===
+        "allowancePanel"
+    ) {
+        renderAllowanceList();
+    }
 
-        console.error(
-            "Local backup error:",
-            error
-        );
+    if (
+        panelId ===
+        "transferPanel"
+    ) {
+        renderTransferList();
+    }
+
+    if (
+        panelId ===
+        "debtPanel"
+    ) {
+        renderDebts();
     }
 }
 
+function closeModal() {
+    $("modalBackdrop")
+        .classList
+        .add("hidden");
 
-// ======================================================
-// FILL STARTING INPUTS
-// ======================================================
-
-function fillStartingInputs() {
-
-    startingCashInput.value =
-        Number(
-            startingBalances.Cash
-        ) || 0;
-
-
-    startingCardInput.value =
-        Number(
-            startingBalances.Card
-        ) || 0;
-
-
-    startingBeepInput.value =
-        Number(
-            startingBalances.Beep
-        ) || 0;
+    document
+        .querySelectorAll(
+            "[data-modal-panel]"
+        )
+        .forEach(
+            (panel) =>
+                panel
+                    .classList
+                    .add("hidden")
+        );
 }
 
+/* =====================================================
+   SAVE / LOAD
+===================================================== */
 
-// ======================================================
-// SAVE FIREBASE
-// ======================================================
+function getPayload() {
+    return {
+        version: 3,
+        transactions,
+        transfers,
+        debts,
+        allowanceEntries,
+        dailyPlans,
+        categoryBudgets
+    };
+}
 
 async function saveData() {
+    $("syncStatus").textContent =
+        "Saving…";
 
-    saveLocalBackup();
+    const payload =
+        getPayload();
 
+    localStorage.setItem(
+        "budgetTrackerV3",
+        JSON.stringify(payload)
+    );
 
     try {
-
         await setDoc(
             budgetDoc,
+            payload,
             {
-                transactions:
-                    transactions,
-
-                debts:
-                    debts,
-
-                transfers:
-                    transfers,
-
-                events:
-                    events,
-
-                startingBalances:
-                    startingBalances
+                merge: true
             }
         );
 
-
-        console.log(
-            "Budget saved to Firestore."
-        );
-
-
-        return true;
-
+        $("syncStatus").textContent =
+            "✓ Synced with Firebase";
     } catch (error) {
-
         console.error(
             "Firebase save error:",
             error
         );
 
-
-        console.log(
-            "Cloud save failed. Local backup is still saved."
-        );
-
-
-        return false;
+        $("syncStatus").textContent =
+            "Offline copy saved on this device";
     }
 }
 
+function loadLocal() {
+    try {
+        const raw =
+            localStorage.getItem(
+                "budgetTrackerV3"
+            ) ||
+            localStorage.getItem(
+                "budgetTrackerV2"
+            );
 
-// ======================================================
-// LOAD FIREBASE
-// ======================================================
+        return raw
+            ? JSON.parse(raw)
+            : null;
+    } catch {
+        return null;
+    }
+}
+
+function migrateData(data) {
+    transactions =
+        safeArray(
+            data.transactions
+        );
+
+    transfers =
+        safeArray(
+            data.transfers
+        );
+
+    debts =
+        safeArray(
+            data.debts
+        );
+
+    if (
+        Array.isArray(
+            data.allowanceEntries
+        )
+    ) {
+        allowanceEntries =
+            data.allowanceEntries;
+    } else if (
+        data.startingBalances
+    ) {
+        allowanceEntries =
+            Object.entries(
+                data.startingBalances
+            )
+                .filter(
+                    ([, amount]) =>
+                        Number(amount) > 0
+                )
+                .map(
+                    (
+                        [account, amount],
+                        index
+                    ) => ({
+                        id:
+                            uid() + index,
+
+                        date:
+                            getToday(),
+
+                        account,
+
+                        amount:
+                            Number(amount)
+                    })
+                );
+    }
+
+    if (
+        data.dailyPlans &&
+        typeof data.dailyPlans ===
+        "object"
+    ) {
+        dailyPlans =
+            data.dailyPlans;
+    } else if (
+        data.events &&
+        typeof data.events ===
+        "object"
+    ) {
+        dailyPlans = {};
+
+        Object.entries(
+            data.events
+        )
+            .forEach(
+                ([date, value]) => {
+                    dailyPlans[date] = {
+                        event:
+                            typeof value ===
+                            "string"
+                                ? value
+                                : "",
+
+                        limit: 0
+                    };
+                }
+            );
+    }
+
+    if (
+        data.categoryBudgets &&
+        typeof data.categoryBudgets ===
+        "object"
+    ) {
+        categoryBudgets = {
+            Needs:
+                Number(
+                    data.categoryBudgets.Needs
+                ) || 0,
+
+            Wants:
+                Number(
+                    data.categoryBudgets.Wants
+                ) || 0,
+
+            Savings:
+                Number(
+                    data.categoryBudgets.Savings
+                ) || 0
+        };
+    }
+}
 
 async function loadData() {
+    $("syncStatus").textContent =
+        "Loading Firebase data…";
 
     try {
-
-        const cloudSnapshot =
+        const snapshot =
             await getDoc(
                 budgetDoc
             );
 
-
         if (
-            cloudSnapshot.exists()
+            snapshot.exists()
         ) {
-
-            const data =
-                cloudSnapshot.data();
-
-
-            transactions =
-                Array.isArray(
-                    data.transactions
-                )
-                    ? data.transactions
-                    : [];
-
-
-            debts =
-                Array.isArray(
-                    data.debts
-                )
-                    ? data.debts
-                    : [];
-
-
-            transfers =
-                Array.isArray(
-                    data.transfers
-                )
-                    ? data.transfers
-                    : [];
-
-
-            events =
-                (
-                    data.events &&
-                    typeof data.events ===
-                    "object"
-                )
-                    ? data.events
-                    : {};
-
-
-            // NEW VERSION
-            if (
-                data.startingBalances &&
-                typeof data.startingBalances ===
-                "object"
-            ) {
-
-                startingBalances = {
-                    Cash:
-                        Number(
-                            data
-                                .startingBalances
-                                .Cash
-                        ) || 0,
-
-                    Card:
-                        Number(
-                            data
-                                .startingBalances
-                                .Card
-                        ) || 0,
-
-                    Beep:
-                        Number(
-                            data
-                                .startingBalances
-                                .Beep
-                        ) || 0
-                };
-
-            }
-
-            // OLD VERSION MIGRATION
-            else if (
-                data.startingMoney !==
-                undefined
-            ) {
-
-                startingBalances = {
-                    Cash:
-                        Number(
-                            data.startingMoney
-                        ) || 0,
-
-                    Card: 0,
-                    Beep: 0
-                };
-            }
-
-
-            saveLocalBackup();
-
-
-            console.log(
-                "Budget loaded from Firestore."
+            migrateData(
+                snapshot.data()
             );
 
-        } else {
+            localStorage.setItem(
+                "budgetTrackerV3",
+                JSON.stringify(
+                    getPayload()
+                )
+            );
 
-            loadLocalBackup();
+            $("syncStatus").textContent =
+                "✓ Synced with Firebase";
+        } else {
+            const local =
+                loadLocal();
+
+            if (local) {
+                migrateData(local);
+            }
 
             await saveData();
-
-
-            console.log(
-                "Local data uploaded to Firestore."
-            );
         }
-
     } catch (error) {
-
         console.error(
             "Firebase load error:",
             error
         );
 
+        const local =
+            loadLocal();
 
-        loadLocalBackup();
+        if (local) {
+            migrateData(local);
+        }
+
+        $("syncStatus").textContent =
+            "Offline mode • using device backup";
     }
 
-
-    fillStartingInputs();
-
-    updateSummary();
-    displayTransactions();
-    displayDebts();
-    displayEvent();
+    refreshAll();
 }
 
+/* =====================================================
+   REFRESH
+===================================================== */
 
-// ======================================================
-// START PROGRAM
-// ======================================================
+function refreshAll() {
+    updateDashboard();
+    renderHistory();
+    renderAllowanceList();
+    renderTransferList();
+    renderDebts();
+}
 
+/* =====================================================
+   INIT
+===================================================== */
+
+function initializeDates() {
+    const today =
+        getToday();
+
+    $("dashboardDate").value =
+        today;
+
+    $("transactionDate").value =
+        today;
+
+    $("historyDate").value =
+        today;
+
+    $("allowanceDate").value =
+        today;
+
+    $("transferDate").value =
+        today;
+}
+
+function bindEvents() {
+    document
+        .querySelectorAll(
+            ".choice[data-category]"
+        )
+        .forEach((button) => {
+            button.addEventListener(
+                "click",
+                () => {
+                    selectedCategory =
+                        button.dataset.category;
+
+                    document
+                        .querySelectorAll(
+                            ".choice[data-category]"
+                        )
+                        .forEach(
+                            (otherButton) =>
+                                otherButton
+                                    .classList
+                                    .remove(
+                                        "selected"
+                                    )
+                        );
+
+                    button
+                        .classList
+                        .add(
+                            "selected"
+                        );
+                }
+            );
+        });
+
+    document
+        .querySelectorAll(
+            ".nav-btn[data-panel]"
+        )
+        .forEach((button) => {
+            button.addEventListener(
+                "click",
+                () => {
+                    document
+                        .querySelectorAll(
+                            ".nav-btn"
+                        )
+                        .forEach(
+                            (otherButton) =>
+                                otherButton
+                                    .classList
+                                    .remove(
+                                        "active"
+                                    )
+                        );
+
+                    button
+                        .classList
+                        .add(
+                            "active"
+                        );
+
+                    openModal(
+                        button.dataset.panel
+                    );
+                }
+            );
+        });
+
+    document
+        .querySelectorAll(
+            ".close-modal"
+        )
+        .forEach(
+            (button) =>
+                button.addEventListener(
+                    "click",
+                    closeModal
+                )
+        );
+
+    $("modalBackdrop")
+        .addEventListener(
+            "click",
+            (event) => {
+                if (
+                    event.target ===
+                    $("modalBackdrop")
+                ) {
+                    closeModal();
+                }
+            }
+        );
+
+    $("editDailyPlanBtn")
+        .addEventListener(
+            "click",
+            () =>
+                openModal(
+                    "dailyPlanPanel"
+                )
+        );
+
+    $("editBudgetsBtn")
+        .addEventListener(
+            "click",
+            () =>
+                openModal(
+                    "budgetPanel"
+                )
+        );
+
+    $("addTransactionBtn")
+        .addEventListener(
+            "click",
+            addTransaction
+        );
+
+    $("addAllowanceBtn")
+        .addEventListener(
+            "click",
+            addAllowance
+        );
+
+    $("transferMoneyBtn")
+        .addEventListener(
+            "click",
+            addTransfer
+        );
+
+    $("addDebtBtn")
+        .addEventListener(
+            "click",
+            addDebt
+        );
+
+    $("saveDailyPlanBtn")
+        .addEventListener(
+            "click",
+            saveDailyPlan
+        );
+
+    $("saveBudgetsBtn")
+        .addEventListener(
+            "click",
+            saveBudgets
+        );
+
+    $("dashboardDate")
+        .addEventListener(
+            "change",
+            () => {
+                $("transactionDate").value =
+                    $("dashboardDate").value;
+
+                $("historyDate").value =
+                    $("dashboardDate").value;
+
+                refreshAll();
+            }
+        );
+
+    $("historyDate")
+        .addEventListener(
+            "change",
+            renderHistory
+        );
+
+    $("previousDate")
+        .addEventListener(
+            "click",
+            () => {
+                $("historyDate").value =
+                    shiftDate(
+                        $("historyDate").value,
+                        -1
+                    );
+
+                renderHistory();
+            }
+        );
+
+    $("nextDate")
+        .addEventListener(
+            "click",
+            () => {
+                $("historyDate").value =
+                    shiftDate(
+                        $("historyDate").value,
+                        1
+                    );
+
+                renderHistory();
+            }
+        );
+}
+
+initializeDates();
+bindEvents();
 loadData();
