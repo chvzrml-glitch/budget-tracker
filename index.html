@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Budget Tracker V2</title>
+    <title>Budget Tracker V6</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -17,16 +17,6 @@
             </div>
         </div>
 
-        <div class="wallet-mini">
-            <span>Total Balance</span>
-            <strong id="sidebarTotal">₱0.00</strong>
-            <div class="mini-balances">
-                <div><span>Cash</span><b id="sidebarCash">₱0.00</b></div>
-                <div><span>Card</span><b id="sidebarCard">₱0.00</b></div>
-                <div><span>Beep</span><b id="sidebarBeep">₱0.00</b></div>
-            </div>
-        </div>
-
         <nav class="side-nav">
             <button class="nav-btn active" data-panel="allowancePanel">💰 <span>Allowance</span></button>
             <button class="nav-btn" data-panel="transferPanel">🔄 <span>Transfer Money</span></button>
@@ -37,12 +27,130 @@
     </aside>
 
     <main class="main-content">
+        <section class="dashboard-toggle-wrap">
+            <button id="toggleDashboardBtn" class="dashboard-toggle-btn">☰ Open Money Dashboard</button>
+        </section>
+
+        <section id="moneyDashboard" class="money-dashboard closed">
+            <div class="dashboard-panel card">
+                <div class="dashboard-panel-head">
+                    <div>
+                        <p class="eyebrow">YOUR MONEY</p>
+                        <h2>Money Dashboard</h2>
+                    </div>
+                    <button id="closeDashboardBtn" class="icon-btn">✕</button>
+                </div>
+
+                <div class="money-bars">
+                    <article class="money-bar-card total-bar-card">
+                        <div class="money-bar-head">
+                            <div>
+                                <span class="money-bar-label">💰 Total Money</span>
+                                <strong id="poolTotal">₱0.00</strong>
+                            </div>
+                            <span class="money-bar-fraction" id="totalPoolFraction">₱0.00 / ₱0.00</span>
+                        </div>
+                        <div class="money-pool-track">
+                            <div class="money-pool-fill total-pool-fill" id="totalPoolProgress"></div>
+                        </div>
+                        <div class="money-bar-footer">
+                            <span>Overall money remaining</span>
+                            <b id="totalPoolPercent">100%</b>
+                        </div>
+                    </article>
+
+                    <div class="pool-grid">
+                        <article class="money-bar-card">
+                            <div class="money-bar-head">
+                                <div>
+                                    <span class="money-bar-label">🛒 Needs</span>
+                                    <strong id="needsPool">₱0.00</strong>
+                                </div>
+                                <span class="money-bar-fraction" id="needsPoolFraction">₱0.00 / ₱0.00</span>
+                            </div>
+                            <div class="money-pool-track">
+                                <div class="money-pool-fill needs-pool-fill" id="needsPoolProgress"></div>
+                            </div>
+                            <div class="money-bar-footer"><span>School • Water • WiFi</span><b id="needsPoolPercent">100%</b></div>
+                        </article>
+
+                        <article class="money-bar-card">
+                            <div class="money-bar-head">
+                                <div>
+                                    <span class="money-bar-label">🎮 Wants</span>
+                                    <strong id="wantsPool">₱0.00</strong>
+                                </div>
+                                <span class="money-bar-fraction" id="wantsPoolFraction">₱0.00 / ₱0.00</span>
+                            </div>
+                            <div class="money-pool-track">
+                                <div class="money-pool-fill wants-pool-fill" id="wantsPoolProgress"></div>
+                            </div>
+                            <div class="money-bar-footer"><span>Food • Gym • Extras</span><b id="wantsPoolPercent">100%</b></div>
+                        </article>
+
+                        <article class="money-bar-card">
+                            <div class="money-bar-head">
+                                <div>
+                                    <span class="money-bar-label">🏦 Savings</span>
+                                    <strong id="savingsPool">₱0.00</strong>
+                                </div>
+                                <span class="money-bar-fraction" id="savingsPoolFraction">₱0.00 / ₱0.00</span>
+                            </div>
+                            <div class="money-pool-track">
+                                <div class="money-pool-fill savings-pool-fill" id="savingsPoolProgress"></div>
+                            </div>
+                            <div class="money-bar-footer"><span>Emergency only</span><b id="savingsPoolPercent">100%</b></div>
+                        </article>
+                    </div>
+                </div>
+
+
+                <div class="wallet-location-section">
+                    <div class="wallet-location-heading">
+                        <div>
+                            <span class="eyebrow">WHERE MY MONEY IS</span>
+                            <h3>Cash / Card / Beep</h3>
+                        </div>
+                    </div>
+
+                    <div class="wallet-location-grid">
+                        <div class="wallet-location-card">
+                            <span>💵 Cash</span>
+                            <strong id="cashBalance">₱0.00</strong>
+                        </div>
+
+                        <div class="wallet-location-card">
+                            <span>💳 Card</span>
+                            <strong id="cardBalance">₱0.00</strong>
+                        </div>
+
+                        <div class="wallet-location-card">
+                            <span>🚆 Beep</span>
+                            <strong id="beepBalance">₱0.00</strong>
+                        </div>
+                    </div>
+
+                    <p class="wallet-location-note">
+                        Transfers only move money between Cash, Card, and Beep. They do not change Needs, Wants, or Savings.
+                    </p>
+                </div>
+
+                <div class="dashboard-actions">
+                    <button class="small-btn" id="editMoneyPoolBtn">Set / Edit Money Split</button>
+                </div>
+            </div>
+        </section>
+
         <header class="topbar">
             <div>
                 <p class="eyebrow">PERSONAL MONEY DASHBOARD</p>
                 <h2>Today’s Budget</h2>
             </div>
-            <input type="date" id="dashboardDate" aria-label="Dashboard date">
+            <div class="dashboard-date-nav">
+                <button type="button" class="date-arrow-btn" id="dashboardPreviousDate" aria-label="Previous day">‹</button>
+                <input type="date" id="dashboardDate" aria-label="Dashboard date">
+                <button type="button" class="date-arrow-btn" id="dashboardNextDate" aria-label="Next day">›</button>
+            </div>
         </header>
 
         <section class="daily-hero card">
@@ -56,15 +164,15 @@
 
             <div class="money-line">
                 <div>
-                    <span class="muted">Daily Spending Money</span>
+                    <span class="muted">Usable Today</span>
                     <strong id="dailyAvailableBig">₱0.00</strong>
                     <span id="dailyAvailableText">available today</span>
                 </div>
 
                 <div class="outflow-box">
-                    <span>💰 Outflow Reserve</span>
+                    <span id="carryLabel">💰 Outflow Reserve</span>
                     <strong id="outflowReserve">+₱0.00</strong>
-                    <small>Automatic rollover from previous days</small>
+                    <small>Automatic carry from previous days</small>
                 </div>
             </div>
 
@@ -78,44 +186,14 @@
             </div>
 
             <div class="daily-breakdown">
-                <div><span>Base Allowance</span><strong id="baseAllowance">₱0.00</strong></div>
-                <div><span>Outflow Reserve</span><strong id="reserveBreakdown">+₱0.00</strong></div>
+                <div><span>Base Money</span><strong id="baseAllowance">₱0.00</strong></div>
+                <div><span>Previous Carry</span><strong id="reserveBreakdown">+₱0.00</strong></div>
                 <div><span>Spent Today</span><strong id="spentToday">-₱0.00</strong></div>
-                <div class="remaining-row"><span>Remaining</span><strong id="remainingToday">₱0.00</strong></div>
+                <div class="remaining-row"><span>Remaining Today</span><strong id="remainingToday">₱0.00</strong></div>
             </div>
         </section>
 
-        <section class="category-section">
-            <div class="section-heading">
-                <div>
-                    <p class="eyebrow">CATEGORY REMAINING</p>
-                    <h3>Budget Bars</h3>
-                </div>
-                <button class="small-btn" id="editBudgetsBtn">Edit Budgets</button>
-            </div>
-
-            <div class="category-grid">
-                <article class="category-card card">
-                    <div class="category-title"><span>🛒 Needs</span><strong id="needsRemaining">₱0.00</strong></div>
-                    <div class="category-track"><div class="category-fill needs-fill" id="needsProgress"></div></div>
-                    <div class="category-meta"><span>School • Water • WiFi</span><span id="needsBudgetLabel">₱0 / ₱0</span></div>
-                </article>
-
-                <article class="category-card card">
-                    <div class="category-title"><span>🎮 Wants</span><strong id="wantsRemaining">₱0.00</strong></div>
-                    <div class="category-track"><div class="category-fill wants-fill" id="wantsProgress"></div></div>
-                    <div class="category-meta"><span>Dinner • Food • Gym</span><span id="wantsBudgetLabel">₱0 / ₱0</span></div>
-                </article>
-
-                <article class="category-card card">
-                    <div class="category-title"><span>🏦 Savings</span><strong id="savingsRemaining">₱0.00</strong></div>
-                    <div class="category-track"><div class="category-fill savings-fill" id="savingsProgress"></div></div>
-                    <div class="category-meta"><span>Emergency only</span><span id="savingsBudgetLabel">₱0 / ₱0</span></div>
-                </article>
-            </div>
-        </section>
-
-        <section class="content-grid">
+        <section class="content-grid single-column">
             <section class="card transaction-card">
                 <h3>Add Transaction</h3>
 
@@ -159,14 +237,6 @@
 
                 <button class="primary-btn" id="addTransactionBtn">+ Add Transaction</button>
             </section>
-
-            <section class="card balance-card">
-                <h3>Wallet Balance</h3>
-                <div class="balance-row"><span>💵 Cash</span><strong id="cashBalance">₱0.00</strong></div>
-                <div class="balance-row"><span>💳 Card</span><strong id="cardBalance">₱0.00</strong></div>
-                <div class="balance-row"><span>🚆 Beep</span><strong id="beepBalance">₱0.00</strong></div>
-                <div class="balance-row total"><span>Total</span><strong id="walletTotal">₱0.00</strong></div>
-            </section>
         </section>
 
         <section class="card history-card">
@@ -179,7 +249,21 @@
                 </div>
             </div>
 
-            <div class="history-event" id="historyEvent">No event saved for this date.</div>
+            <div class="history-highlight" id="historyHighlight">
+                <div>
+                    <span>EVENT</span>
+                    <strong id="historyEventName">No event</strong>
+                </div>
+                <div>
+                    <span>BASE MONEY</span>
+                    <strong id="historyBaseMoney">₱0.00</strong>
+                </div>
+                <div>
+                    <span>RESERVE / DEFICIT</span>
+                    <strong id="historyReserve">₱0.00</strong>
+                </div>
+            </div>
+
             <div id="transactionList"><p class="empty">No transactions for this date.</p></div>
             <div class="history-total"><span>Daily Total</span><strong id="dailyTotal">₱0.00</strong></div>
         </section>
@@ -192,7 +276,7 @@
             <h3>💰 Allowance</h3>
             <button class="icon-btn close-modal">✕</button>
         </div>
-        <p class="modal-help">Add new allowance to Cash, Card, or Beep. This is real money added to your wallet.</p>
+        <p class="modal-help">Optional: record money received. Your Needs/Wants/Savings split is controlled separately in the Money Dashboard.</p>
 
         <div class="form-grid two">
             <div>
@@ -222,7 +306,7 @@
             <h3>🔄 Transfer Money</h3>
             <button class="icon-btn close-modal">✕</button>
         </div>
-        <p class="modal-help">Transfers only move real money between Cash, Card, and Beep. They do not count as spending.</p>
+        <p class="modal-help">Transfers move money between Cash, Card, and Beep only. They do not affect Needs/Wants/Savings totals.</p>
 
         <div class="form-grid two">
             <div>
@@ -285,7 +369,7 @@
             <button class="icon-btn close-modal">✕</button>
         </div>
 
-        <p class="modal-help">Set the event and base allowance for this day. Outflow Reserve is automatic and cannot be edited.</p>
+        <p class="modal-help">Choose where today's base money comes from. Saving the day allocates that amount from your Money Dashboard into Today's Budget. Leftovers roll forward; overspending becomes a deficit for the next day.</p>
 
         <div class="form-grid two">
             <div>
@@ -300,36 +384,76 @@
             </div>
 
             <div>
-                <label for="dailyLimit">Base Allowance</label>
-                <input type="number" id="dailyLimit" min="0" step="0.01" placeholder="₱0.00">
+                <label>Base Money</label>
+                <input type="number" id="dailyLimit" min="0" step="0.01" value="0" readonly>
             </div>
         </div>
 
-        <button class="primary-btn" id="saveDailyPlanBtn">Save Daily Plan</button>
+        <div class="daily-source-wrap">
+            <label>Allocate Today's Base Money</label>
+            <p class="daily-source-note">
+                You can use Needs, Wants, and Savings together on the same day. Enter 0 for any category you do not want to use.
+            </p>
+
+            <div class="daily-allocation-grid">
+                <div class="daily-allocation-card">
+                    <div class="daily-allocation-head">
+                        <strong>🛒 Needs</strong>
+                        <span id="dailyNeedsAvailable">Available: ₱0.00</span>
+                    </div>
+                    <input type="number" id="dailyNeedsInput" min="0" step="0.01" value="0" placeholder="₱0.00">
+                </div>
+
+                <div class="daily-allocation-card">
+                    <div class="daily-allocation-head">
+                        <strong>🎮 Wants</strong>
+                        <span id="dailyWantsAvailable">Available: ₱0.00</span>
+                    </div>
+                    <input type="number" id="dailyWantsInput" min="0" step="0.01" value="0" placeholder="₱0.00">
+                </div>
+
+                <div class="daily-allocation-card">
+                    <div class="daily-allocation-head">
+                        <strong>🏦 Savings</strong>
+                        <span id="dailySavingsAvailable">Available: ₱0.00</span>
+                    </div>
+                    <input type="number" id="dailySavingsInput" min="0" step="0.01" value="0" placeholder="₱0.00">
+                </div>
+            </div>
+
+            <div class="daily-allocation-total">
+                <span>Total Base Money</span>
+                <strong id="dailyAllocationTotal">₱0.00</strong>
+            </div>
+        </div>
+
+        <button class="primary-btn" id="saveDailyPlanBtn">Allocate to Today &amp; Save</button>
     </section>
 
-    <section class="modal hidden" id="budgetPanel" data-modal-panel>
+    <section class="modal hidden" id="moneyPoolPanel" data-modal-panel>
         <div class="modal-heading">
-            <h3>📊 Category Budgets</h3>
+            <h3>💼 Money Split</h3>
             <button class="icon-btn close-modal">✕</button>
         </div>
 
+        <p class="modal-help">Enter the money stored in each category. Daily allocations from Edit Day subtract from these pools; transactions spend from Today's Budget instead.</p>
+
         <div class="form-grid one">
             <div>
-                <label for="needsBudget">🛒 Needs Budget</label>
-                <input type="number" id="needsBudget" min="0" step="0.01">
+                <label for="needsMoneyInput">🛒 Needs Money</label>
+                <input type="number" id="needsMoneyInput" min="0" step="0.01">
             </div>
             <div>
-                <label for="wantsBudget">🎮 Wants Budget</label>
-                <input type="number" id="wantsBudget" min="0" step="0.01">
+                <label for="wantsMoneyInput">🎮 Wants Money</label>
+                <input type="number" id="wantsMoneyInput" min="0" step="0.01">
             </div>
             <div>
-                <label for="savingsBudget">🏦 Savings / Emergency Budget</label>
-                <input type="number" id="savingsBudget" min="0" step="0.01">
+                <label for="savingsMoneyInput">🏦 Savings Money</label>
+                <input type="number" id="savingsMoneyInput" min="0" step="0.01">
             </div>
         </div>
 
-        <button class="primary-btn" id="saveBudgetsBtn">Save Category Budgets</button>
+        <button class="primary-btn" id="saveMoneyPoolBtn">Save Money Split</button>
     </section>
 </div>
 
