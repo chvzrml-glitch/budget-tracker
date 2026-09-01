@@ -1,5 +1,18 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
-import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+import {
+    initializeApp
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
+
+import {
+    getFirestore,
+    doc,
+    getDoc,
+    setDoc
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
+
+
+/* =========================================================
+   FIREBASE
+========================================================= */
 
 const firebaseConfig = {
     apiKey: "AIzaSyC-Ye3G7g5fVu0-vq99y_EZOM3oBxLf2Hc",
@@ -14,13 +27,18 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const budgetDoc = doc(db, "budgetTracker", "main");
 
+
+/* =========================================================
+   DATA
+========================================================= */
+
 let transactions = [];
 let transfers = [];
 let debts = [];
 let allowanceEntries = [];
 let dailyPlans = {};
 
-let categoryBudgets = {
+let moneyPoolBase = {
     Needs: 0,
     Wants: 0,
     Savings: 0
@@ -30,31 +48,69 @@ let selectedCategory = "Needs";
 
 const $ = (id) => document.getElementById(id);
 
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
 function money(value) {
-    return `₱${(Number(value) || 0).toLocaleString("en-PH", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    })}`;
+
+    const number = Number(value) || 0;
+    const sign = number < 0 ? "-" : "";
+
+    return `${sign}₱${Math.abs(number).toLocaleString(
+        "en-PH",
+        {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }
+    )}`;
 }
+
+
+function signedMoney(value) {
+
+    const number = Number(value) || 0;
+
+    if (number > 0) {
+        return `+${money(number)}`;
+    }
+
+    return money(number);
+}
+
 
 function getToday() {
-    const now = new Date();
 
-    return `${now.getFullYear()}-${String(
-        now.getMonth() + 1
-    ).padStart(2, "0")}-${String(
-        now.getDate()
-    ).padStart(2, "0")}`;
+    const date = new Date();
+
+    const year = date.getFullYear();
+
+    const month = String(
+        date.getMonth() + 1
+    ).padStart(2, "0");
+
+    const day = String(
+        date.getDate()
+    ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
 }
 
-function shiftDate(dateString, amount) {
-    const [year, month, day] = dateString.split("-").map(Number);
 
-    const date = new Date(
-        year,
-        month - 1,
-        day
-    );
+function shiftDate(dateString, amount) {
+
+    const [year, month, day] =
+        dateString
+            .split("-")
+            .map(Number);
+
+    const date =
+        new Date(
+            year,
+            month - 1,
+            day
+        );
 
     date.setDate(
         date.getDate() + amount
@@ -67,19 +123,25 @@ function shiftDate(dateString, amount) {
     ).padStart(2, "0")}`;
 }
 
+
 function safeArray(value) {
-    return Array.isArray(value)
-        ? value
-        : [];
+    return Array.isArray(value) ? value : [];
 }
 
+
 function uid() {
-    return Date.now() + Math.floor(
-        Math.random() * 100000
+
+    return (
+        Date.now() +
+        Math.floor(
+            Math.random() * 100000
+        )
     );
 }
 
+
 function escapeHtml(value) {
+
     return String(value ?? "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
@@ -88,60 +150,512 @@ function escapeHtml(value) {
         .replaceAll("'", "&#039;");
 }
 
-/* =====================================================
-   REAL WALLET
-===================================================== */
 
-function calculateBalances() {
+/* =========================================================
+   DAILY PLAN HELPERS
+========================================================= */
+
+function emptyAllocations() {
+
+    return {
+        Needs: 0,
+        Wants: 0,
+        Savings: 0
+    };
+}
+
+
+function getPlanAllocations(date) {
+
+    const plan = dailyPlans[date];
+
+    if (
+        !plan ||
+        !plan.allocations ||
+        typeof plan.allocations !== "object"
+    ) {
+        return emptyAllocations();
+    }
+
+    return {
+
+        Needs:
+            Number(
+                plan.allocations.Needs
+            ) || 0,
+
+        Wants:
+            Number(
+                plan.allocations.Wants
+            ) || 0,
+
+        Savings:
+            Number(
+                plan.allocations.Savings
+            ) || 0
+    };
+}
+
+
+function getPlanBaseMoney(date) {
+
+    const plan = dailyPlans[date];
+
+    if (!plan) {
+        return 0;
+    }
+
+    if (
+        plan.allocations &&
+        typeof plan.allocations === "object"
+    ) {
+
+        const allocation =
+            getPlanAllocations(date);
+
+        return (
+            allocation.Needs +
+            allocation.Wants +
+            allocation.Savings
+        );
+    }
+
+    return Number(plan.limit) || 0;
+}
+
+
+/* =========================================================
+   MONEY DASHBOARD
+========================================================= */
+
+function categoryAllocated(
+    category,
+    ignoreDate = null
+) {
+
+    let total = 0;
+
+    Object.keys(dailyPlans)
+        .forEach((date) => {
+
+            if (
+                ignoreDate &&
+                date === ignoreDate
+            ) {
+                return;
+            }
+
+            const allocation =
+                getPlanAllocations(date);
+
+            total +=
+                Number(
+                    allocation[category]
+                ) || 0;
+        });
+
+    return total;
+}
+
+
+function categoryRemaining(category) {
+
+    const original =
+        Number(
+            moneyPoolBase[category]
+        ) || 0;
+
+    const allocated =
+        categoryAllocated(category);
+
+    return original - allocated;
+}
+
+
+function categoryAvailableForDay(
+    category,
+    date
+) {
+
+    const original =
+        Number(
+            moneyPoolBase[category]
+        ) || 0;
+
+    const allocatedOtherDays =
+        categoryAllocated(
+            category,
+            date
+        );
+
+    return (
+        original -
+        allocatedOtherDays
+    );
+}
+
+
+/* =========================================================
+   MONEY DASHBOARD BARS
+========================================================= */
+
+function setMoneyPoolBar(
+    prefix,
+    remaining,
+    original
+) {
+
+    const safeOriginal =
+        Number(original) || 0;
+
+    const safeRemaining =
+        Number(remaining) || 0;
+
+    let percentage = 0;
+
+    if (safeOriginal > 0) {
+
+        percentage =
+            (
+                safeRemaining /
+                safeOriginal
+            ) * 100;
+    }
+
+    const clamped =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                percentage
+            )
+        );
+
+    const progress =
+        $(`${prefix}PoolProgress`);
+
+    if (progress) {
+
+        progress.style.width =
+            `${clamped}%`;
+
+        progress.classList.toggle(
+            "negative",
+            safeRemaining < 0
+        );
+
+        progress.classList.toggle(
+            "empty",
+            safeRemaining <= 0 &&
+            safeOriginal > 0
+        );
+    }
+
+    const fraction =
+        $(`${prefix}PoolFraction`);
+
+    if (fraction) {
+
+        fraction.textContent =
+            `${money(
+                safeRemaining
+            )} / ${money(
+                safeOriginal
+            )}`;
+    }
+
+    const percentText =
+        $(`${prefix}PoolPercent`);
+
+    if (percentText) {
+
+        percentText.textContent =
+            `${Math.max(
+                0,
+                Math.round(percentage)
+            )}%`;
+    }
+}
+
+
+function updateMoneyDashboard() {
+
+    const needs =
+        categoryRemaining("Needs");
+
+    const wants =
+        categoryRemaining("Wants");
+
+    const savings =
+        categoryRemaining("Savings");
+
+    const totalRemaining =
+        needs +
+        wants +
+        savings;
+
+    const totalOriginal =
+        (Number(moneyPoolBase.Needs) || 0) +
+        (Number(moneyPoolBase.Wants) || 0) +
+        (Number(moneyPoolBase.Savings) || 0);
+
+    if ($("needsPool")) {
+        $("needsPool").textContent =
+            money(needs);
+    }
+
+    if ($("wantsPool")) {
+        $("wantsPool").textContent =
+            money(wants);
+    }
+
+    if ($("savingsPool")) {
+        $("savingsPool").textContent =
+            money(savings);
+    }
+
+    if ($("poolTotal")) {
+        $("poolTotal").textContent =
+            money(totalRemaining);
+    }
+
+    setMoneyPoolBar(
+        "needs",
+        needs,
+        moneyPoolBase.Needs
+    );
+
+    setMoneyPoolBar(
+        "wants",
+        wants,
+        moneyPoolBase.Wants
+    );
+
+    setMoneyPoolBar(
+        "savings",
+        savings,
+        moneyPoolBase.Savings
+    );
+
+    setMoneyPoolBar(
+        "total",
+        totalRemaining,
+        totalOriginal
+    );
+}
+
+
+/* =========================================================
+   CASH / CARD / BEEP
+========================================================= */
+
+function calculateWalletBalances() {
+
     const balances = {
         Cash: 0,
         Card: 0,
         Beep: 0
     };
 
-    allowanceEntries.forEach((entry) => {
-        if (
-            balances[entry.account] !== undefined
-        ) {
-            balances[entry.account] +=
-                Number(entry.amount) || 0;
-        }
-    });
 
-    transactions.forEach((transaction) => {
-        if (
-            balances[transaction.payment] !== undefined
-        ) {
-            balances[transaction.payment] -=
-                Number(transaction.amount) || 0;
-        }
-    });
+    /* MONEY ENTERING */
 
-    transfers.forEach((transfer) => {
-        const amount =
-            Number(transfer.amount) || 0;
+    allowanceEntries.forEach(
+        (entry) => {
 
-        if (
-            balances[transfer.from] !== undefined
-        ) {
-            balances[transfer.from] -= amount;
-        }
+            if (
+                balances[entry.account] !==
+                undefined
+            ) {
 
-        if (
-            balances[transfer.to] !== undefined
-        ) {
-            balances[transfer.to] += amount;
+                balances[entry.account] +=
+                    Number(
+                        entry.amount
+                    ) || 0;
+            }
         }
-    });
+    );
+
+
+    /* TRANSACTIONS */
+
+    transactions.forEach(
+        (transaction) => {
+
+            if (
+                balances[
+                    transaction.payment
+                ] !== undefined
+            ) {
+
+                balances[
+                    transaction.payment
+                ] -=
+                    Number(
+                        transaction.amount
+                    ) || 0;
+            }
+        }
+    );
+
+
+    /* TRANSFERS */
+
+    transfers.forEach(
+        (transfer) => {
+
+            const amount =
+                Number(
+                    transfer.amount
+                ) || 0;
+
+            if (
+                balances[
+                    transfer.from
+                ] !== undefined
+            ) {
+
+                balances[
+                    transfer.from
+                ] -= amount;
+            }
+
+            if (
+                balances[
+                    transfer.to
+                ] !== undefined
+            ) {
+
+                balances[
+                    transfer.to
+                ] += amount;
+            }
+        }
+    );
 
     return balances;
 }
 
-/* =====================================================
+
+function updateWalletBalances() {
+
+    const balances =
+        calculateWalletBalances();
+
+    if ($("cashBalance")) {
+        $("cashBalance").textContent =
+            money(balances.Cash);
+    }
+
+    if ($("cardBalance")) {
+        $("cardBalance").textContent =
+            money(balances.Card);
+    }
+
+    if ($("beepBalance")) {
+        $("beepBalance").textContent =
+            money(balances.Beep);
+    }
+}
+
+
+/* =========================================================
+   EDIT DAY AVAILABLE MONEY
+========================================================= */
+
+function updateDailyAllocationAvailable() {
+
+    if (!$("dashboardDate")) {
+        return;
+    }
+
+    const date =
+        $("dashboardDate").value;
+
+    const needs =
+        categoryAvailableForDay(
+            "Needs",
+            date
+        );
+
+    const wants =
+        categoryAvailableForDay(
+            "Wants",
+            date
+        );
+
+    const savings =
+        categoryAvailableForDay(
+            "Savings",
+            date
+        );
+
+    if ($("dailyNeedsAvailable")) {
+
+        $("dailyNeedsAvailable").textContent =
+            `Available: ${money(needs)}`;
+    }
+
+    if ($("dailyWantsAvailable")) {
+
+        $("dailyWantsAvailable").textContent =
+            `Available: ${money(wants)}`;
+    }
+
+    if ($("dailySavingsAvailable")) {
+
+        $("dailySavingsAvailable").textContent =
+            `Available: ${money(savings)}`;
+    }
+}
+
+
+/* =========================================================
+   DAILY ALLOCATION TOTAL
+========================================================= */
+
+function updateDailyAllocationTotal() {
+
+    const needs =
+        Number(
+            $("dailyNeedsInput")?.value
+        ) || 0;
+
+    const wants =
+        Number(
+            $("dailyWantsInput")?.value
+        ) || 0;
+
+    const savings =
+        Number(
+            $("dailySavingsInput")?.value
+        ) || 0;
+
+    const total =
+        needs +
+        wants +
+        savings;
+
+    if ($("dailyAllocationTotal")) {
+
+        $("dailyAllocationTotal").textContent =
+            money(total);
+    }
+
+    if ($("dailyLimit")) {
+
+        $("dailyLimit").value =
+            total;
+    }
+}
+
+
+/* =========================================================
    SPENDING
-===================================================== */
+========================================================= */
 
 function spendingForDate(date) {
+
     return transactions
         .filter(
             (transaction) =>
@@ -150,185 +664,198 @@ function spendingForDate(date) {
         .reduce(
             (total, transaction) =>
                 total +
-                (Number(transaction.amount) || 0),
+                (
+                    Number(
+                        transaction.amount
+                    ) || 0
+                ),
             0
         );
 }
 
-function categorySpent(category) {
-    return transactions
-        .filter(
-            (transaction) =>
-                transaction.category === category
-        )
-        .reduce(
-            (total, transaction) =>
-                total +
-                (Number(transaction.amount) || 0),
-            0
-        );
+
+/* =========================================================
+   RESERVE / DEFICIT
+========================================================= */
+
+function allBudgetDatesBefore(
+    targetDate
+) {
+
+    const dates = new Set();
+
+    Object.keys(dailyPlans)
+        .forEach((date) => {
+
+            if (date < targetDate) {
+                dates.add(date);
+            }
+        });
+
+    transactions.forEach(
+        (transaction) => {
+
+            if (
+                transaction.date <
+                targetDate
+            ) {
+
+                dates.add(
+                    transaction.date
+                );
+            }
+        }
+    );
+
+    return [...dates].sort();
 }
 
-/* =====================================================
-   OUTFLOW RESERVE
-===================================================== */
 
-function getSortedPlanDatesBefore(targetDate) {
-    return Object.keys(dailyPlans)
-        .filter(
-            (date) => date < targetDate
-        )
-        .sort();
+function calculateCarryBefore(
+    targetDate
+) {
+
+    let carry = 0;
+
+    allBudgetDatesBefore(
+        targetDate
+    ).forEach(
+        (date) => {
+
+            const base =
+                getPlanBaseMoney(date);
+
+            const spent =
+                spendingForDate(date);
+
+            carry =
+                carry +
+                base -
+                spent;
+        }
+    );
+
+    return carry;
 }
 
-function calculateOutflowReserveBefore(targetDate) {
-    let reserve = 0;
-
-    const dates =
-        getSortedPlanDatesBefore(targetDate);
-
-    dates.forEach((date) => {
-        const baseAllowance =
-            Number(
-                dailyPlans[date]?.limit
-            ) || 0;
-
-        const spent =
-            spendingForDate(date);
-
-        const availableThatDay =
-            baseAllowance + reserve;
-
-        reserve = Math.max(
-            0,
-            availableThatDay - spent
-        );
-    });
-
-    return reserve;
-}
 
 function calculateDailyBudgetState(date) {
+
     const plan =
         dailyPlans[date] || {
-            event: "",
-            limit: 0
+            event: ""
         };
 
-    const baseAllowance =
-        Number(plan.limit) || 0;
+    const base =
+        getPlanBaseMoney(date);
 
-    const reserveBeforeToday =
-        calculateOutflowReserveBefore(date);
+    const carryBefore =
+        calculateCarryBefore(date);
 
-    const totalAvailable =
-        baseAllowance +
-        reserveBeforeToday;
+    const rawAvailable =
+        base +
+        carryBefore;
+
+    const usableToday =
+        Math.max(
+            0,
+            rawAvailable
+        );
 
     const spentToday =
         spendingForDate(date);
 
     const remainingToday =
-        totalAvailable -
+        rawAvailable -
         spentToday;
 
     return {
+
         event:
             plan.event || "",
 
-        baseAllowance,
+        base,
 
-        reserveBeforeToday,
+        carryBefore,
 
-        totalAvailable,
+        rawAvailable,
+
+        usableToday,
 
         spentToday,
 
-        remainingToday
+        remainingToday,
+
+        allocations:
+            getPlanAllocations(date)
     };
 }
 
-/* =====================================================
-   PROGRESS
-===================================================== */
 
-function percentage(spent, available) {
-    available =
-        Number(available) || 0;
-
-    if (
-        available <= 0
-    ) {
-        return 0;
-    }
-
-    return Math.min(
-        100,
-        Math.max(
-            0,
-            (spent / available) * 100
-        )
-    );
-}
+/* =========================================================
+   DAILY PROGRESS
+========================================================= */
 
 function setProgress(
     element,
     spent,
     available
 ) {
-    const percent =
-        percentage(
-            spent,
-            available
+
+    if (!element) {
+        return;
+    }
+
+    const safeAvailable =
+        Math.max(
+            0,
+            Number(available) || 0
+        );
+
+    const safeSpent =
+        Number(spent) || 0;
+
+    let percentage = 0;
+
+    if (safeAvailable > 0) {
+
+        percentage =
+            (
+                safeSpent /
+                safeAvailable
+            ) * 100;
+    }
+
+    percentage =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                percentage
+            )
         );
 
     element.style.width =
-        `${percent}%`;
+        `${percentage}%`;
 
     element.classList.toggle(
         "over",
-        Number(available) > 0 &&
-        Number(spent) >
-        Number(available)
+        safeSpent >
+        safeAvailable &&
+        safeSpent > 0
     );
 }
 
-/* =====================================================
-   DASHBOARD
-===================================================== */
 
-function updateDashboard() {
-    const balances =
-        calculateBalances();
+/* =========================================================
+   TODAY'S BUDGET DASHBOARD
+========================================================= */
 
-    const walletTotal =
-        balances.Cash +
-        balances.Card +
-        balances.Beep;
+function updateDailyDashboard() {
 
-    $("sidebarCash").textContent =
-        money(balances.Cash);
-
-    $("sidebarCard").textContent =
-        money(balances.Card);
-
-    $("sidebarBeep").textContent =
-        money(balances.Beep);
-
-    $("sidebarTotal").textContent =
-        money(walletTotal);
-
-    $("cashBalance").textContent =
-        money(balances.Cash);
-
-    $("cardBalance").textContent =
-        money(balances.Card);
-
-    $("beepBalance").textContent =
-        money(balances.Beep);
-
-    $("walletTotal").textContent =
-        money(walletTotal);
+    if (!$("dashboardDate")) {
+        return;
+    }
 
     const date =
         $("dashboardDate").value;
@@ -336,193 +863,224 @@ function updateDashboard() {
     const state =
         calculateDailyBudgetState(date);
 
-    $("eventTitle").textContent =
-        state.event ||
-        "No event set";
+    if ($("eventTitle")) {
 
-    $("dailyAvailableBig").textContent =
-        money(
-            state.totalAvailable
-        );
+        $("eventTitle").textContent =
+            state.event ||
+            "No event set";
+    }
 
-    $("dailyAvailableText").textContent =
-        `${money(
-            state.remainingToday
-        )} remaining after today's spending`;
+    if ($("dailyAvailableBig")) {
 
-    $("outflowReserve").textContent =
-        `+${money(
-            state.reserveBeforeToday
-        )}`;
+        $("dailyAvailableBig").textContent =
+            money(
+                state.usableToday
+            );
+    }
 
-    $("baseAllowance").textContent =
-        money(
-            state.baseAllowance
-        );
+    if ($("dailyAvailableText")) {
 
-    $("reserveBreakdown").textContent =
-        `+${money(
-            state.reserveBeforeToday
-        )}`;
+        if (
+            state.rawAvailable < 0
+        ) {
 
-    $("spentToday").textContent =
-        `-${money(
-            state.spentToday
-        )}`;
+            $("dailyAvailableText").textContent =
+                `${money(
+                    state.rawAvailable
+                )} deficit before today's spending`;
 
-    $("remainingToday").textContent =
-        money(
-            state.remainingToday
-        );
+        } else {
 
-    $("dailySpentLabel").textContent =
-        `Spent ${money(
-            state.spentToday
-        )}`;
+            $("dailyAvailableText").textContent =
+                `${money(
+                    Math.max(
+                        0,
+                        state.remainingToday
+                    )
+                )} usable remaining today`;
+        }
+    }
 
-    $("dailyPercentLabel").textContent =
-        state.totalAvailable > 0
-            ? `${Math.round(
+    if ($("carryLabel")) {
+
+        $("carryLabel").textContent =
+            state.carryBefore < 0
+                ? "⚠️ Previous Deficit"
+                : "💰 Outflow Reserve";
+    }
+
+    if ($("outflowReserve")) {
+
+        $("outflowReserve").textContent =
+            signedMoney(
+                state.carryBefore
+            );
+    }
+
+    if ($("baseAllowance")) {
+
+        $("baseAllowance").textContent =
+            money(state.base);
+    }
+
+    if ($("reserveBreakdown")) {
+
+        $("reserveBreakdown").textContent =
+            signedMoney(
+                state.carryBefore
+            );
+    }
+
+    if ($("spentToday")) {
+
+        $("spentToday").textContent =
+            state.spentToday > 0
+                ? `-${money(
+                    state.spentToday
+                )}`
+                : money(0);
+    }
+
+    if ($("remainingToday")) {
+
+        $("remainingToday").textContent =
+            money(
+                state.remainingToday
+            );
+    }
+
+    if ($("dailySpentLabel")) {
+
+        $("dailySpentLabel").textContent =
+            `Spent ${money(
+                state.spentToday
+            )}`;
+    }
+
+    let percentage = 0;
+
+    if (
+        state.usableToday > 0
+    ) {
+
+        percentage =
+            Math.round(
                 (
                     state.spentToday /
-                    state.totalAvailable
-                ) *
-                100
-            )}%`
-            : "0%";
+                    state.usableToday
+                ) * 100
+            );
+    }
+
+    if ($("dailyPercentLabel")) {
+
+        $("dailyPercentLabel").textContent =
+            `${percentage}%`;
+    }
 
     setProgress(
         $("dailyProgress"),
         state.spentToday,
-        state.totalAvailable
-    );
-
-    updateCategoryCard(
-        "Needs",
-        "needs"
-    );
-
-    updateCategoryCard(
-        "Wants",
-        "wants"
-    );
-
-    updateCategoryCard(
-        "Savings",
-        "savings"
+        state.usableToday
     );
 }
 
-function updateCategoryCard(
-    category,
-    prefix
-) {
-    const budget =
-        Number(
-            categoryBudgets[category]
-        ) || 0;
 
-    const spent =
-        categorySpent(category);
-
-    const remaining =
-        budget - spent;
-
-    $(`${prefix}Remaining`).textContent =
-        money(remaining);
-
-    $(`${prefix}BudgetLabel`).textContent =
-        `${money(spent)} / ${money(budget)}`;
-
-    setProgress(
-        $(`${prefix}Progress`),
-        spent,
-        budget
-    );
-}
-
-/* =====================================================
+/* =========================================================
    HISTORY
-===================================================== */
+========================================================= */
 
 function renderHistory() {
+
+    if (!$("historyDate")) {
+        return;
+    }
+
     const date =
         $("historyDate").value;
-
-    const transactionsToday =
-        transactions.filter(
-            (transaction) =>
-                transaction.date === date
-        );
-
-    const transfersToday =
-        transfers.filter(
-            (transfer) =>
-                transfer.date === date
-        );
-
-    const allowanceToday =
-        allowanceEntries.filter(
-            (allowance) =>
-                allowance.date === date
-        );
-
-    const list =
-        $("transactionList");
-
-    list.innerHTML = "";
 
     const state =
         calculateDailyBudgetState(date);
 
-    if (
-        dailyPlans[date]
-    ) {
-        $("historyEvent").textContent =
-            `${state.event || "No event"} • Base ${money(
-                state.baseAllowance
-            )} • Reserve +${money(
-                state.reserveBeforeToday
-            )}`;
-    } else {
-        $("historyEvent").textContent =
-            "No event saved for this date.";
+    if ($("historyEventName")) {
+
+        $("historyEventName").textContent =
+            state.event ||
+            "No event";
     }
 
+    if ($("historyBaseMoney")) {
+
+        $("historyBaseMoney").textContent =
+            money(state.base);
+    }
+
+    if ($("historyReserve")) {
+
+        $("historyReserve").textContent =
+            signedMoney(
+                state.carryBefore
+            );
+    }
+
+    const list =
+        $("transactionList");
+
+    if (!list) {
+        return;
+    }
+
+    list.innerHTML = "";
+
     const rows = [
-        ...transactionsToday.map(
-            (item) => ({
-                type: "transaction",
-                time: item.id,
-                item
-            })
-        ),
 
-        ...transfersToday.map(
-            (item) => ({
-                type: "transfer",
-                time: item.id,
-                item
-            })
-        ),
+        ...transactions
+            .filter(
+                (transaction) =>
+                    transaction.date === date
+            )
+            .map(
+                (item) => ({
+                    type: "transaction",
+                    time: item.id,
+                    item
+                })
+            ),
 
-        ...allowanceToday.map(
-            (item) => ({
-                type: "allowance",
-                time: item.id,
-                item
-            })
-        )
-    ];
+        ...transfers
+            .filter(
+                (transfer) =>
+                    transfer.date === date
+            )
+            .map(
+                (item) => ({
+                    type: "transfer",
+                    time: item.id,
+                    item
+                })
+            ),
 
-    rows.sort(
+        ...allowanceEntries
+            .filter(
+                (allowance) =>
+                    allowance.date === date
+            )
+            .map(
+                (item) => ({
+                    type: "allowance",
+                    time: item.id,
+                    item
+                })
+            )
+
+    ].sort(
         (a, b) =>
-            b.time - a.time
+            b.time -
+            a.time
     );
 
-    if (
-        rows.length === 0
-    ) {
+    if (rows.length === 0) {
+
         list.innerHTML = `
             <p class="empty">
                 No transactions for this date.
@@ -530,180 +1088,193 @@ function renderHistory() {
         `;
     }
 
-    rows.forEach((row) => {
-        const wrapper =
-            document.createElement(
-                "div"
-            );
+    rows.forEach(
+        (row) => {
 
-        wrapper.className =
-            "transaction-item";
-
-        const info =
-            document.createElement(
-                "div"
-            );
-
-        info.className =
-            "info";
-
-        const actions =
-            document.createElement(
-                "div"
-            );
-
-        actions.className =
-            "item-actions";
-
-        const price =
-            document.createElement(
-                "strong"
-            );
-
-        const deleteButton =
-            document.createElement(
-                "button"
-            );
-
-        deleteButton.className =
-            "delete-btn";
-
-        deleteButton.textContent =
-            "Delete";
-
-        if (
-            row.type ===
-            "transaction"
-        ) {
-            info.innerHTML = `
-                <strong>
-                    ${escapeHtml(
-                        row.item.description
-                    )}
-                </strong>
-
-                <span>
-                    ${escapeHtml(
-                        row.item.category
-                    )}
-
-                    ${
-                        row.item.subcategory
-                            ? ` • ${escapeHtml(
-                                row.item.subcategory
-                            )}`
-                            : ""
-                    }
-
-                    • ${escapeHtml(
-                        row.item.payment
-                    )}
-                </span>
-            `;
-
-            price.textContent =
-                money(
-                    row.item.amount
+            const wrapper =
+                document.createElement(
+                    "div"
                 );
 
-            deleteButton.addEventListener(
-                "click",
-                () =>
-                    deleteTransaction(
-                        row.item.id
-                    )
-            );
-        }
+            wrapper.className =
+                "transaction-item";
 
-        if (
-            row.type ===
-            "transfer"
-        ) {
-            info.innerHTML = `
-                <strong>
-                    🔄 Money Transfer
-                </strong>
-
-                <span>
-                    ${escapeHtml(
-                        row.item.from
-                    )}
-                    →
-                    ${escapeHtml(
-                        row.item.to
-                    )}
-                </span>
-            `;
-
-            price.textContent =
-                money(
-                    row.item.amount
+            const info =
+                document.createElement(
+                    "div"
                 );
 
-            deleteButton.addEventListener(
-                "click",
-                () =>
-                    deleteTransfer(
-                        row.item.id
-                    )
+            info.className =
+                "info";
+
+            const actions =
+                document.createElement(
+                    "div"
+                );
+
+            actions.className =
+                "item-actions";
+
+            const amountText =
+                document.createElement(
+                    "strong"
+                );
+
+            const deleteButton =
+                document.createElement(
+                    "button"
+                );
+
+            deleteButton.className =
+                "delete-btn";
+
+            deleteButton.textContent =
+                "Delete";
+
+
+            if (
+                row.type ===
+                "transaction"
+            ) {
+
+                info.innerHTML = `
+                    <strong>
+                        ${escapeHtml(
+                            row.item.description
+                        )}
+                    </strong>
+
+                    <span>
+                        ${escapeHtml(
+                            row.item.category
+                        )}
+
+                        ${
+                            row.item.subcategory
+                                ? ` • ${escapeHtml(
+                                    row.item.subcategory
+                                )}`
+                                : ""
+                        }
+
+                        • ${escapeHtml(
+                            row.item.payment
+                        )}
+                    </span>
+                `;
+
+                amountText.textContent =
+                    money(
+                        row.item.amount
+                    );
+
+                deleteButton.addEventListener(
+                    "click",
+                    () =>
+                        deleteTransaction(
+                            row.item.id
+                        )
+                );
+            }
+
+
+            if (
+                row.type ===
+                "transfer"
+            ) {
+
+                info.innerHTML = `
+                    <strong>
+                        🔄 Money Transfer
+                    </strong>
+
+                    <span>
+                        ${escapeHtml(
+                            row.item.from
+                        )}
+                        →
+                        ${escapeHtml(
+                            row.item.to
+                        )}
+                    </span>
+                `;
+
+                amountText.textContent =
+                    money(
+                        row.item.amount
+                    );
+
+                deleteButton.addEventListener(
+                    "click",
+                    () =>
+                        deleteTransfer(
+                            row.item.id
+                        )
+                );
+            }
+
+
+            if (
+                row.type ===
+                "allowance"
+            ) {
+
+                info.innerHTML = `
+                    <strong>
+                        💰 Allowance Added
+                    </strong>
+
+                    <span>
+                        Added to
+                        ${escapeHtml(
+                            row.item.account
+                        )}
+                    </span>
+                `;
+
+                amountText.textContent =
+                    `+${money(
+                        row.item.amount
+                    )}`;
+
+                deleteButton.addEventListener(
+                    "click",
+                    () =>
+                        deleteAllowance(
+                            row.item.id
+                        )
+                );
+            }
+
+            actions.append(
+                amountText,
+                deleteButton
+            );
+
+            wrapper.append(
+                info,
+                actions
+            );
+
+            list.appendChild(
+                wrapper
             );
         }
+    );
 
-        if (
-            row.type ===
-            "allowance"
-        ) {
-            info.innerHTML = `
-                <strong>
-                    💰 Allowance Added
-                </strong>
+    if ($("dailyTotal")) {
 
-                <span>
-                    Added to
-                    ${escapeHtml(
-                        row.item.account
-                    )}
-                </span>
-            `;
-
-            price.textContent =
-                `+${money(
-                    row.item.amount
-                )}`;
-
-            deleteButton.addEventListener(
-                "click",
-                () =>
-                    deleteAllowance(
-                        row.item.id
-                    )
+        $("dailyTotal").textContent =
+            money(
+                spendingForDate(date)
             );
-        }
-
-        actions.append(
-            price,
-            deleteButton
-        );
-
-        wrapper.append(
-            info,
-            actions
-        );
-
-        list.appendChild(
-            wrapper
-        );
-    });
-
-    $("dailyTotal").textContent =
-        money(
-            spendingForDate(date)
-        );
+    }
 }
 
-/* =====================================================
-   LIST ITEM
-===================================================== */
+
+/* =========================================================
+   GENERIC LIST
+========================================================= */
 
 function makeListItem(
     title,
@@ -711,6 +1282,7 @@ function makeListItem(
     amount,
     deleteHandler
 ) {
+
     const item =
         document.createElement(
             "div"
@@ -782,13 +1354,19 @@ function makeListItem(
     return item;
 }
 
-/* =====================================================
+
+/* =========================================================
    ALLOWANCE LIST
-===================================================== */
+========================================================= */
 
 function renderAllowanceList() {
+
     const list =
         $("allowanceList");
+
+    if (!list) {
+        return;
+    }
 
     list.innerHTML = "";
 
@@ -796,16 +1374,15 @@ function renderAllowanceList() {
         [...allowanceEntries]
             .sort(
                 (a, b) =>
-                    b.id - a.id
+                    b.id -
+                    a.id
             )
-            .slice(
-                0,
-                10
-            );
+            .slice(0, 10);
 
     if (
         sorted.length === 0
     ) {
+
         list.innerHTML = `
             <p class="empty">
                 No allowance entries yet.
@@ -815,28 +1392,41 @@ function renderAllowanceList() {
         return;
     }
 
-    sorted.forEach((entry) => {
-        list.appendChild(
-            makeListItem(
-                `Allowance → ${entry.account}`,
-                entry.date,
-                money(entry.amount),
-                () =>
-                    deleteAllowance(
-                        entry.id
-                    )
-            )
-        );
-    });
+    sorted.forEach(
+        (entry) => {
+
+            list.appendChild(
+                makeListItem(
+
+                    `Allowance → ${entry.account}`,
+
+                    entry.date,
+
+                    money(entry.amount),
+
+                    () =>
+                        deleteAllowance(
+                            entry.id
+                        )
+                )
+            );
+        }
+    );
 }
 
-/* =====================================================
+
+/* =========================================================
    TRANSFER LIST
-===================================================== */
+========================================================= */
 
 function renderTransferList() {
+
     const list =
         $("transferList");
+
+    if (!list) {
+        return;
+    }
 
     list.innerHTML = "";
 
@@ -844,16 +1434,15 @@ function renderTransferList() {
         [...transfers]
             .sort(
                 (a, b) =>
-                    b.id - a.id
+                    b.id -
+                    a.id
             )
-            .slice(
-                0,
-                10
-            );
+            .slice(0, 10);
 
     if (
         sorted.length === 0
     ) {
+
         list.innerHTML = `
             <p class="empty">
                 No transfers yet.
@@ -863,35 +1452,48 @@ function renderTransferList() {
         return;
     }
 
-    sorted.forEach((entry) => {
-        list.appendChild(
-            makeListItem(
-                `${entry.from} → ${entry.to}`,
-                entry.date,
-                money(entry.amount),
-                () =>
-                    deleteTransfer(
-                        entry.id
-                    )
-            )
-        );
-    });
+    sorted.forEach(
+        (entry) => {
+
+            list.appendChild(
+                makeListItem(
+
+                    `${entry.from} → ${entry.to}`,
+
+                    entry.date,
+
+                    money(entry.amount),
+
+                    () =>
+                        deleteTransfer(
+                            entry.id
+                        )
+                )
+            );
+        }
+    );
 }
 
-/* =====================================================
-   UTANG LIST
-===================================================== */
+
+/* =========================================================
+   UTANG
+========================================================= */
 
 function renderDebts() {
+
     const list =
         $("debtList");
 
+    if (!list) {
+        return;
+    }
+
     list.innerHTML = "";
 
-    const total =
+    const totalDebt =
         debts.reduce(
-            (sum, debt) =>
-                sum +
+            (total, debt) =>
+                total +
                 (
                     Number(
                         debt.amount
@@ -900,12 +1502,16 @@ function renderDebts() {
             0
         );
 
-    $("debtBalance").textContent =
-        money(total);
+    if ($("debtBalance")) {
+
+        $("debtBalance").textContent =
+            money(totalDebt);
+    }
 
     if (
         debts.length === 0
     ) {
+
         list.innerHTML = `
             <p class="empty">
                 No utang recorded.
@@ -918,115 +1524,119 @@ function renderDebts() {
     [...debts]
         .sort(
             (a, b) =>
-                b.id - a.id
+                b.id -
+                a.id
         )
-        .forEach((debt) => {
-            const item =
-                document.createElement(
-                    "div"
+        .forEach(
+            (debt) => {
+
+                const item =
+                    document.createElement(
+                        "div"
+                    );
+
+                item.className =
+                    "list-item";
+
+                const info =
+                    document.createElement(
+                        "div"
+                    );
+
+                info.className =
+                    "info";
+
+                info.innerHTML = `
+                    <strong>
+                        ${escapeHtml(
+                            debt.name
+                        )}
+                    </strong>
+
+                    <span>
+                        Owes you
+                    </span>
+                `;
+
+                const actions =
+                    document.createElement(
+                        "div"
+                    );
+
+                actions.className =
+                    "item-actions";
+
+                const value =
+                    document.createElement(
+                        "strong"
+                    );
+
+                value.textContent =
+                    money(debt.amount);
+
+                const editButton =
+                    document.createElement(
+                        "button"
+                    );
+
+                editButton.className =
+                    "edit-btn";
+
+                editButton.textContent =
+                    "Edit";
+
+                editButton.addEventListener(
+                    "click",
+                    () =>
+                        editDebt(
+                            debt.id
+                        )
                 );
 
-            item.className =
-                "list-item";
+                const deleteButton =
+                    document.createElement(
+                        "button"
+                    );
 
-            const info =
-                document.createElement(
-                    "div"
+                deleteButton.className =
+                    "delete-btn";
+
+                deleteButton.textContent =
+                    "Delete";
+
+                deleteButton.addEventListener(
+                    "click",
+                    () =>
+                        deleteDebt(
+                            debt.id
+                        )
                 );
 
-            info.className =
-                "info";
-
-            info.innerHTML = `
-                <strong>
-                    ${escapeHtml(
-                        debt.name
-                    )}
-                </strong>
-
-                <span>
-                    Owes you
-                </span>
-            `;
-
-            const actions =
-                document.createElement(
-                    "div"
+                actions.append(
+                    value,
+                    editButton,
+                    deleteButton
                 );
 
-            actions.className =
-                "item-actions";
-
-            const amount =
-                document.createElement(
-                    "strong"
+                item.append(
+                    info,
+                    actions
                 );
 
-            amount.textContent =
-                money(
-                    debt.amount
+                list.appendChild(
+                    item
                 );
-
-            const edit =
-                document.createElement(
-                    "button"
-                );
-
-            edit.className =
-                "edit-btn";
-
-            edit.textContent =
-                "Edit";
-
-            edit.addEventListener(
-                "click",
-                () =>
-                    editDebt(
-                        debt.id
-                    )
-            );
-
-            const remove =
-                document.createElement(
-                    "button"
-                );
-
-            remove.className =
-                "delete-btn";
-
-            remove.textContent =
-                "Delete";
-
-            remove.addEventListener(
-                "click",
-                () =>
-                    deleteDebt(
-                        debt.id
-                    )
-            );
-
-            actions.append(
-                amount,
-                edit,
-                remove
-            );
-
-            item.append(
-                info,
-                actions
-            );
-
-            list.appendChild(
-                item
-            );
-        });
+            }
+        );
 }
 
-/* =====================================================
+
+/* =========================================================
    ADD TRANSACTION
-===================================================== */
+========================================================= */
 
 async function addTransaction() {
+
     const date =
         $("transactionDate").value;
 
@@ -1054,6 +1664,7 @@ async function addTransaction() {
         !Number.isFinite(amount) ||
         amount <= 0
     ) {
+
         alert(
             "Please complete the transaction details and enter a valid amount."
         );
@@ -1061,67 +1672,287 @@ async function addTransaction() {
         return;
     }
 
-    const balances =
-        calculateBalances();
+
+    const wallet =
+        calculateWalletBalances();
+
+    const walletConfigured =
+        wallet.Cash !== 0 ||
+        wallet.Card !== 0 ||
+        wallet.Beep !== 0 ||
+        allowanceEntries.length > 0;
+
 
     if (
-        amount >
-        balances[payment]
+        walletConfigured &&
+        wallet[payment] !== undefined &&
+        amount > wallet[payment]
     ) {
-        alert(
-            `Not enough ${payment} balance. Available: ${money(
-                balances[payment]
-            )}`
-        );
 
-        return;
-    }
-
-    if (
-        selectedCategory ===
-        "Savings"
-    ) {
-        const okay =
+        const continueAnyway =
             confirm(
-                "This transaction will use your Emergency Savings category. Continue?"
+                `${payment} only has ${money(
+                    wallet[payment]
+                )} remaining.\n\nContinue anyway?`
             );
 
-        if (!okay) {
+        if (!continueAnyway) {
             return;
         }
     }
 
+
     transactions.push({
+
         id: uid(),
+
         date,
+
         description,
+
         amount,
+
         category:
             selectedCategory,
+
         subcategory,
+
         payment
     });
+
 
     $("description").value = "";
     $("amount").value = "";
     $("subcategory").value = "";
 
+    /*
+        Transaction History follows
+        the transaction you just added.
+
+        Today's Budget remains independent.
+    */
+
     $("historyDate").value =
         date;
 
-    $("dashboardDate").value =
-        date;
 
     await saveData();
 
     refreshAll();
 }
 
-/* =====================================================
+
+/* =========================================================
+   SAVE MONEY SPLIT
+========================================================= */
+
+async function saveMoneyPool() {
+
+    const needsRemaining =
+        Number(
+            $("needsMoneyInput").value
+        );
+
+    const wantsRemaining =
+        Number(
+            $("wantsMoneyInput").value
+        );
+
+    const savingsRemaining =
+        Number(
+            $("savingsMoneyInput").value
+        );
+
+    if (
+        [
+            needsRemaining,
+            wantsRemaining,
+            savingsRemaining
+        ].some(
+            (value) =>
+                !Number.isFinite(value) ||
+                value < 0
+        )
+    ) {
+
+        alert(
+            "Enter valid money amounts for Needs, Wants, and Savings."
+        );
+
+        return;
+    }
+
+    moneyPoolBase = {
+
+        Needs:
+            needsRemaining +
+            categoryAllocated("Needs"),
+
+        Wants:
+            wantsRemaining +
+            categoryAllocated("Wants"),
+
+        Savings:
+            savingsRemaining +
+            categoryAllocated("Savings")
+    };
+
+    await saveData();
+
+    closeModal();
+
+    refreshAll();
+}
+
+
+/* =========================================================
+   SAVE DAILY PLAN
+========================================================= */
+
+async function saveDailyPlan() {
+
+    const date =
+        $("dashboardDate").value;
+
+    const event =
+        $("eventName")
+            .value
+            .trim();
+
+    const needs =
+        Number(
+            $("dailyNeedsInput").value
+        ) || 0;
+
+    const wants =
+        Number(
+            $("dailyWantsInput").value
+        ) || 0;
+
+    const savings =
+        Number(
+            $("dailySavingsInput").value
+        ) || 0;
+
+    if (
+        [
+            needs,
+            wants,
+            savings
+        ].some(
+            (amount) =>
+                !Number.isFinite(amount) ||
+                amount < 0
+        )
+    ) {
+
+        alert(
+            "Daily allocations cannot be negative."
+        );
+
+        return;
+    }
+
+
+    const availableNeeds =
+        categoryAvailableForDay(
+            "Needs",
+            date
+        );
+
+    const availableWants =
+        categoryAvailableForDay(
+            "Wants",
+            date
+        );
+
+    const availableSavings =
+        categoryAvailableForDay(
+            "Savings",
+            date
+        );
+
+
+    if (
+        needs >
+        availableNeeds
+    ) {
+
+        alert(
+            `Not enough Needs money.\n\nAvailable: ${money(
+                availableNeeds
+            )}`
+        );
+
+        return;
+    }
+
+
+    if (
+        wants >
+        availableWants
+    ) {
+
+        alert(
+            `Not enough Wants money.\n\nAvailable: ${money(
+                availableWants
+            )}`
+        );
+
+        return;
+    }
+
+
+    if (
+        savings >
+        availableSavings
+    ) {
+
+        alert(
+            `Not enough Savings money.\n\nAvailable: ${money(
+                availableSavings
+            )}`
+        );
+
+        return;
+    }
+
+
+    const total =
+        needs +
+        wants +
+        savings;
+
+
+    dailyPlans[date] = {
+
+        event,
+
+        limit: total,
+
+        allocations: {
+
+            Needs: needs,
+            Wants: wants,
+            Savings: savings
+        }
+    };
+
+
+    await saveData();
+
+    closeModal();
+
+    refreshAll();
+}
+
+
+/* =========================================================
    ADD ALLOWANCE
-===================================================== */
+========================================================= */
 
 async function addAllowance() {
+
     const date =
         $("allowanceDate").value;
 
@@ -1138,6 +1969,7 @@ async function addAllowance() {
         !Number.isFinite(amount) ||
         amount <= 0
     ) {
+
         alert(
             "Enter a valid allowance amount."
         );
@@ -1145,26 +1977,35 @@ async function addAllowance() {
         return;
     }
 
+
     allowanceEntries.push({
+
         id: uid(),
+
         date,
+
         account,
+
         amount
     });
 
+
     $("allowanceAmount").value =
         "";
+
 
     await saveData();
 
     refreshAll();
 }
 
-/* =====================================================
+
+/* =========================================================
    TRANSFER
-===================================================== */
+========================================================= */
 
 async function addTransfer() {
+
     const date =
         $("transferDate").value;
 
@@ -1184,6 +2025,7 @@ async function addTransfer() {
         !Number.isFinite(amount) ||
         amount <= 0
     ) {
+
         alert(
             "Enter a valid transfer amount."
         );
@@ -1191,9 +2033,11 @@ async function addTransfer() {
         return;
     }
 
+
     if (
         from === to
     ) {
+
         alert(
             "Choose two different accounts."
         );
@@ -1201,15 +2045,18 @@ async function addTransfer() {
         return;
     }
 
+
     const balances =
-        calculateBalances();
+        calculateWalletBalances();
+
 
     if (
         amount >
         balances[from]
     ) {
+
         alert(
-            `Not enough ${from} balance. Available: ${money(
+            `Not enough ${from} balance.\n\nAvailable: ${money(
                 balances[from]
             )}`
         );
@@ -1217,27 +2064,37 @@ async function addTransfer() {
         return;
     }
 
+
     transfers.push({
+
         id: uid(),
+
         date,
+
         from,
+
         to,
+
         amount
     });
 
+
     $("transferAmount").value =
         "";
+
 
     await saveData();
 
     refreshAll();
 }
 
-/* =====================================================
+
+/* =========================================================
    UTANG
-===================================================== */
+========================================================= */
 
 async function addDebt() {
+
     const name =
         $("debtName")
             .value
@@ -1253,6 +2110,7 @@ async function addDebt() {
         !Number.isFinite(amount) ||
         amount <= 0
     ) {
+
         alert(
             "Enter a name and valid amount."
         );
@@ -1260,24 +2118,29 @@ async function addDebt() {
         return;
     }
 
+
     debts.push({
+
         id: uid(),
+
         name,
+
         amount
     });
 
-    $("debtName").value =
-        "";
 
-    $("debtAmount").value =
-        "";
+    $("debtName").value = "";
+    $("debtAmount").value = "";
+
 
     await saveData();
 
     renderDebts();
 }
 
+
 async function editDebt(id) {
+
     const debt =
         debts.find(
             (item) =>
@@ -1288,42 +2151,41 @@ async function editDebt(id) {
         return;
     }
 
-    const newName =
+
+    const name =
         prompt(
             "Name:",
             debt.name
         );
 
-    if (
-        newName === null
-    ) {
+    if (name === null) {
         return;
     }
 
-    const newAmountRaw =
+
+    const rawAmount =
         prompt(
             "Amount:",
             debt.amount
         );
 
     if (
-        newAmountRaw === null
+        rawAmount === null
     ) {
         return;
     }
 
-    const newAmount =
-        Number(
-            newAmountRaw
-        );
+
+    const amount =
+        Number(rawAmount);
+
 
     if (
-        !newName.trim() ||
-        !Number.isFinite(
-            newAmount
-        ) ||
-        newAmount <= 0
+        !name.trim() ||
+        !Number.isFinite(amount) ||
+        amount <= 0
     ) {
+
         alert(
             "Invalid debt details."
         );
@@ -1331,22 +2193,26 @@ async function editDebt(id) {
         return;
     }
 
+
     debt.name =
-        newName.trim();
+        name.trim();
 
     debt.amount =
-        newAmount;
+        amount;
+
 
     await saveData();
 
     renderDebts();
 }
 
-/* =====================================================
-   DELETE
-===================================================== */
+
+/* =========================================================
+   DELETE FUNCTIONS
+========================================================= */
 
 async function deleteTransaction(id) {
+
     if (
         !confirm(
             "Delete this transaction?"
@@ -1366,7 +2232,9 @@ async function deleteTransaction(id) {
     refreshAll();
 }
 
+
 async function deleteTransfer(id) {
+
     if (
         !confirm(
             "Delete this transfer?"
@@ -1386,7 +2254,9 @@ async function deleteTransfer(id) {
     refreshAll();
 }
 
+
 async function deleteAllowance(id) {
+
     if (
         !confirm(
             "Delete this allowance entry?"
@@ -1406,7 +2276,9 @@ async function deleteAllowance(id) {
     refreshAll();
 }
 
+
 async function deleteDebt(id) {
+
     if (
         !confirm(
             "Delete this utang?"
@@ -1423,165 +2295,153 @@ async function deleteDebt(id) {
 
     await saveData();
 
-    renderDebts();
-}
-
-/* =====================================================
-   DAILY PLAN
-===================================================== */
-
-async function saveDailyPlan() {
-    const date =
-        $("dashboardDate").value;
-
-    const event =
-        $("eventName")
-            .value
-            .trim();
-
-    const limit =
-        Number(
-            $("dailyLimit").value
-        );
-
-    if (
-        !date ||
-        !Number.isFinite(limit) ||
-        limit < 0
-    ) {
-        alert(
-            "Enter a valid base allowance."
-        );
-
-        return;
-    }
-
-    dailyPlans[date] = {
-        event,
-        limit
-    };
-
-    await saveData();
-
-    closeModal();
-
     refreshAll();
 }
 
-/* =====================================================
-   CATEGORY BUDGET
-===================================================== */
 
-async function saveBudgets() {
-    const needs =
-        Number(
-            $("needsBudget").value
-        );
+/* =========================================================
+   MONEY DASHBOARD SLIDE
+========================================================= */
 
-    const wants =
-        Number(
-            $("wantsBudget").value
-        );
+function openMoneyDashboard() {
 
-    const savings =
-        Number(
-            $("savingsBudget").value
-        );
+    $("moneyDashboard")
+        .classList
+        .remove("closed");
 
-    if (
-        [needs, wants, savings]
-            .some(
-                (value) =>
-                    !Number.isFinite(
-                        value
-                    ) ||
-                    value < 0
-            )
-    ) {
-        alert(
-            "Enter valid category budgets."
-        );
-
-        return;
-    }
-
-    categoryBudgets = {
-        Needs: needs,
-        Wants: wants,
-        Savings: savings
-    };
-
-    await saveData();
-
-    closeModal();
-
-    updateDashboard();
+    $("toggleDashboardBtn").textContent =
+        "☰ Hide Money Dashboard";
 }
 
-/* =====================================================
+
+function closeMoneyDashboard() {
+
+    $("moneyDashboard")
+        .classList
+        .add("closed");
+
+    $("toggleDashboardBtn").textContent =
+        "☰ Open Money Dashboard";
+}
+
+
+function toggleMoneyDashboard() {
+
+    if (
+        $("moneyDashboard")
+            .classList
+            .contains("closed")
+    ) {
+
+        openMoneyDashboard();
+
+    } else {
+
+        closeMoneyDashboard();
+    }
+}
+
+
+/* =========================================================
    MODALS
-===================================================== */
+========================================================= */
 
 function openModal(panelId) {
+
     $("modalBackdrop")
         .classList
         .remove("hidden");
+
 
     document
         .querySelectorAll(
             "[data-modal-panel]"
         )
         .forEach(
-            (panel) =>
+            (panel) => {
+
                 panel
                     .classList
-                    .add("hidden")
+                    .add("hidden");
+            }
         );
+
 
     $(panelId)
         .classList
         .remove("hidden");
 
+
+    /* EDIT DAY */
+
     if (
         panelId ===
         "dailyPlanPanel"
     ) {
+
+        const date =
+            $("dashboardDate").value;
+
         const plan =
-            dailyPlans[
-                $("dashboardDate").value
-            ] || {
-                event: "",
-                limit: 0
+            dailyPlans[date] || {
+                event: ""
             };
+
+        const allocations =
+            getPlanAllocations(date);
+
 
         $("eventName").value =
             plan.event || "";
 
-        $("dailyLimit").value =
-            Number(
-                plan.limit
-            ) || 0;
+        $("dailyNeedsInput").value =
+            allocations.Needs;
+
+        $("dailyWantsInput").value =
+            allocations.Wants;
+
+        $("dailySavingsInput").value =
+            allocations.Savings;
+
+
+        updateDailyAllocationAvailable();
+
+        updateDailyAllocationTotal();
     }
+
+
+    /* EDIT MONEY */
 
     if (
         panelId ===
-        "budgetPanel"
+        "moneyPoolPanel"
     ) {
-        $("needsBudget").value =
-            Number(
-                categoryBudgets.Needs
-            ) || 0;
 
-        $("wantsBudget").value =
-            Number(
-                categoryBudgets.Wants
-            ) || 0;
+        $("needsMoneyInput").value =
+            Math.max(
+                0,
+                categoryRemaining(
+                    "Needs"
+                )
+            );
 
-        $("savingsBudget").value =
-            Number(
-                categoryBudgets.Savings
-            ) || 0;
+        $("wantsMoneyInput").value =
+            Math.max(
+                0,
+                categoryRemaining(
+                    "Wants"
+                )
+            );
+
+        $("savingsMoneyInput").value =
+            Math.max(
+                0,
+                categoryRemaining(
+                    "Savings"
+                )
+            );
     }
+
 
     if (
         panelId ===
@@ -1590,12 +2450,14 @@ function openModal(panelId) {
         renderAllowanceList();
     }
 
+
     if (
         panelId ===
         "transferPanel"
     ) {
         renderTransferList();
     }
+
 
     if (
         panelId ===
@@ -1605,7 +2467,9 @@ function openModal(panelId) {
     }
 }
 
+
 function closeModal() {
+
     $("modalBackdrop")
         .classList
         .add("hidden");
@@ -1615,42 +2479,66 @@ function closeModal() {
             "[data-modal-panel]"
         )
         .forEach(
-            (panel) =>
+            (panel) => {
+
                 panel
                     .classList
-                    .add("hidden")
+                    .add("hidden");
+            }
         );
 }
 
-/* =====================================================
-   SAVE / LOAD
-===================================================== */
+
+/* =========================================================
+   FIREBASE PAYLOAD
+========================================================= */
 
 function getPayload() {
+
     return {
-        version: 3,
+
+        version: 9,
+
         transactions,
+
         transfers,
+
         debts,
+
         allowanceEntries,
+
         dailyPlans,
-        categoryBudgets
+
+        moneyPoolBase
     };
 }
 
+
+/* =========================================================
+   SAVE
+========================================================= */
+
 async function saveData() {
-    $("syncStatus").textContent =
-        "Saving…";
+
+    if ($("syncStatus")) {
+
+        $("syncStatus").textContent =
+            "Saving…";
+    }
+
 
     const payload =
         getPayload();
 
+
     localStorage.setItem(
-        "budgetTrackerV3",
+        "budgetTrackerV9",
         JSON.stringify(payload)
     );
 
+
     try {
+
         await setDoc(
             budgetDoc,
             payload,
@@ -1659,38 +2547,94 @@ async function saveData() {
             }
         );
 
-        $("syncStatus").textContent =
-            "✓ Synced with Firebase";
+
+        if ($("syncStatus")) {
+
+            $("syncStatus").textContent =
+                "✓ Synced with Firebase";
+        }
+
     } catch (error) {
+
         console.error(
             "Firebase save error:",
             error
         );
 
-        $("syncStatus").textContent =
-            "Offline copy saved on this device";
+
+        if ($("syncStatus")) {
+
+            $("syncStatus").textContent =
+                "Offline copy saved on this device";
+        }
     }
 }
 
+
+/* =========================================================
+   LOCAL BACKUP
+========================================================= */
+
 function loadLocal() {
+
     try {
+
         const raw =
+            localStorage.getItem(
+                "budgetTrackerV9"
+            ) ||
+
+            localStorage.getItem(
+                "budgetTrackerV8"
+            ) ||
+
+            localStorage.getItem(
+                "budgetTrackerV7"
+            ) ||
+
+            localStorage.getItem(
+                "budgetTrackerV6"
+            ) ||
+
+            localStorage.getItem(
+                "budgetTrackerV5"
+            ) ||
+
+            localStorage.getItem(
+                "budgetTrackerV4"
+            ) ||
+
             localStorage.getItem(
                 "budgetTrackerV3"
             ) ||
+
             localStorage.getItem(
                 "budgetTrackerV2"
             );
 
+
         return raw
             ? JSON.parse(raw)
             : null;
-    } catch {
+
+    } catch (error) {
+
+        console.error(
+            "Local backup error:",
+            error
+        );
+
         return null;
     }
 }
 
-function migrateData(data) {
+
+/* =========================================================
+   MIGRATION
+========================================================= */
+
+function migrateData(data = {}) {
+
     transactions =
         safeArray(
             data.transactions
@@ -1706,81 +2650,114 @@ function migrateData(data) {
             data.debts
         );
 
-    if (
-        Array.isArray(
+    allowanceEntries =
+        safeArray(
             data.allowanceEntries
-        )
+        );
+
+
+    /*
+        RESTORE OLD CASH / CARD / BEEP
+    */
+
+    if (
+        allowanceEntries.length === 0 &&
+        data.startingBalances &&
+        typeof data.startingBalances ===
+        "object"
     ) {
-        allowanceEntries =
-            data.allowanceEntries;
-    } else if (
-        data.startingBalances
-    ) {
-        allowanceEntries =
-            Object.entries(
-                data.startingBalances
-            )
-                .filter(
-                    ([, amount]) =>
-                        Number(amount) > 0
-                )
-                .map(
-                    (
-                        [account, amount],
-                        index
-                    ) => ({
-                        id:
-                            uid() + index,
+
+        const migrationDate =
+            getToday();
+
+        [
+            "Cash",
+            "Card",
+            "Beep"
+        ].forEach(
+            (account) => {
+
+                const amount =
+                    Number(
+                        data.startingBalances[
+                            account
+                        ]
+                    ) || 0;
+
+                if (
+                    amount > 0
+                ) {
+
+                    allowanceEntries.push({
+
+                        id: uid(),
 
                         date:
-                            getToday(),
+                            migrationDate,
 
                         account,
 
-                        amount:
-                            Number(amount)
-                    })
-                );
+                        amount,
+
+                        migrated:
+                            true
+                    });
+                }
+            }
+        );
     }
+
 
     if (
         data.dailyPlans &&
         typeof data.dailyPlans ===
-        "object"
+        "object" &&
+        !Array.isArray(
+            data.dailyPlans
+        )
     ) {
+
         dailyPlans =
             data.dailyPlans;
-    } else if (
-        data.events &&
-        typeof data.events ===
-        "object"
-    ) {
+
+    } else {
+
         dailyPlans = {};
-
-        Object.entries(
-            data.events
-        )
-            .forEach(
-                ([date, value]) => {
-                    dailyPlans[date] = {
-                        event:
-                            typeof value ===
-                            "string"
-                                ? value
-                                : "",
-
-                        limit: 0
-                    };
-                }
-            );
     }
 
+
     if (
+        data.moneyPoolBase &&
+        typeof data.moneyPoolBase ===
+        "object"
+    ) {
+
+        moneyPoolBase = {
+
+            Needs:
+                Number(
+                    data.moneyPoolBase.Needs
+                ) || 0,
+
+            Wants:
+                Number(
+                    data.moneyPoolBase.Wants
+                ) || 0,
+
+            Savings:
+                Number(
+                    data.moneyPoolBase.Savings
+                ) || 0
+        };
+
+    } else if (
         data.categoryBudgets &&
         typeof data.categoryBudgets ===
         "object"
     ) {
-        categoryBudgets = {
+
+        moneyPoolBase = {
+
             Needs:
                 Number(
                     data.categoryBudgets.Needs
@@ -1796,297 +2773,558 @@ function migrateData(data) {
                     data.categoryBudgets.Savings
                 ) || 0
         };
+
+    } else {
+
+        moneyPoolBase = {
+            Needs: 0,
+            Wants: 0,
+            Savings: 0
+        };
     }
 }
 
+
+/* =========================================================
+   LOAD
+========================================================= */
+
 async function loadData() {
-    $("syncStatus").textContent =
-        "Loading Firebase data…";
+
+    if ($("syncStatus")) {
+
+        $("syncStatus").textContent =
+            "Loading Firebase data…";
+    }
+
 
     try {
+
         const snapshot =
             await getDoc(
                 budgetDoc
             );
 
+
         if (
             snapshot.exists()
         ) {
+
             migrateData(
                 snapshot.data()
             );
 
+
             localStorage.setItem(
-                "budgetTrackerV3",
+                "budgetTrackerV9",
                 JSON.stringify(
                     getPayload()
                 )
             );
 
-            $("syncStatus").textContent =
-                "✓ Synced with Firebase";
+
+            if ($("syncStatus")) {
+
+                $("syncStatus").textContent =
+                    "✓ Synced with Firebase";
+            }
+
         } else {
+
             const local =
                 loadLocal();
 
             if (local) {
+
                 migrateData(local);
             }
 
             await saveData();
         }
+
     } catch (error) {
+
         console.error(
             "Firebase load error:",
             error
         );
 
+
         const local =
             loadLocal();
 
         if (local) {
+
             migrateData(local);
         }
 
-        $("syncStatus").textContent =
-            "Offline mode • using device backup";
+
+        if ($("syncStatus")) {
+
+            $("syncStatus").textContent =
+                "Offline mode • using device backup";
+        }
     }
+
 
     refreshAll();
 }
 
-/* =====================================================
-   REFRESH
-===================================================== */
+
+/* =========================================================
+   REFRESH EVERYTHING
+========================================================= */
 
 function refreshAll() {
-    updateDashboard();
+
+    updateMoneyDashboard();
+
+    updateWalletBalances();
+
+    updateDailyAllocationAvailable();
+
+    updateDailyDashboard();
+
     renderHistory();
+
     renderAllowanceList();
+
     renderTransferList();
+
     renderDebts();
 }
 
-/* =====================================================
-   INIT
-===================================================== */
+
+/* =========================================================
+   INITIAL DATES
+========================================================= */
 
 function initializeDates() {
+
     const today =
         getToday();
 
-    $("dashboardDate").value =
-        today;
 
-    $("transactionDate").value =
-        today;
+    if ($("dashboardDate")) {
+        $("dashboardDate").value =
+            today;
+    }
 
-    $("historyDate").value =
-        today;
+    if ($("transactionDate")) {
+        $("transactionDate").value =
+            today;
+    }
 
-    $("allowanceDate").value =
-        today;
+    if ($("historyDate")) {
+        $("historyDate").value =
+            today;
+    }
 
-    $("transferDate").value =
-        today;
+    if ($("allowanceDate")) {
+        $("allowanceDate").value =
+            today;
+    }
+
+    if ($("transferDate")) {
+        $("transferDate").value =
+            today;
+    }
 }
 
+
+/* =========================================================
+   EVENT LISTENERS
+========================================================= */
+
 function bindEvents() {
+
+
+    /* TRANSACTION CATEGORY */
+
     document
         .querySelectorAll(
             ".choice[data-category]"
         )
-        .forEach((button) => {
-            button.addEventListener(
-                "click",
-                () => {
-                    selectedCategory =
-                        button.dataset.category;
+        .forEach(
+            (button) => {
 
-                    document
-                        .querySelectorAll(
-                            ".choice[data-category]"
-                        )
-                        .forEach(
-                            (otherButton) =>
-                                otherButton
-                                    .classList
-                                    .remove(
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        selectedCategory =
+                            button.dataset.category;
+
+                        document
+                            .querySelectorAll(
+                                ".choice[data-category]"
+                            )
+                            .forEach(
+                                (item) => {
+
+                                    item.classList.remove(
                                         "selected"
-                                    )
-                        );
+                                    );
+                                }
+                            );
 
-                    button
-                        .classList
-                        .add(
+                        button.classList.add(
                             "selected"
                         );
-                }
-            );
-        });
+                    }
+                );
+            }
+        );
+
+
+    /* SIDEBAR */
 
     document
         .querySelectorAll(
             ".nav-btn[data-panel]"
         )
-        .forEach((button) => {
-            button.addEventListener(
-                "click",
-                () => {
-                    document
-                        .querySelectorAll(
-                            ".nav-btn"
-                        )
-                        .forEach(
-                            (otherButton) =>
-                                otherButton
-                                    .classList
-                                    .remove(
-                                        "active"
-                                    )
-                        );
+        .forEach(
+            (button) => {
 
-                    button
-                        .classList
-                        .add(
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        document
+                            .querySelectorAll(
+                                ".nav-btn"
+                            )
+                            .forEach(
+                                (item) => {
+
+                                    item.classList.remove(
+                                        "active"
+                                    );
+                                }
+                            );
+
+                        button.classList.add(
                             "active"
                         );
 
-                    openModal(
-                        button.dataset.panel
-                    );
-                }
-            );
-        });
+                        openModal(
+                            button.dataset.panel
+                        );
+                    }
+                );
+            }
+        );
+
+
+    /* CLOSE MODAL */
 
     document
         .querySelectorAll(
             ".close-modal"
         )
         .forEach(
-            (button) =>
+            (button) => {
+
                 button.addEventListener(
                     "click",
                     closeModal
-                )
+                );
+            }
         );
 
-    $("modalBackdrop")
-        .addEventListener(
-            "click",
-            (event) => {
-                if (
-                    event.target ===
-                    $("modalBackdrop")
-                ) {
-                    closeModal();
+
+    if ($("modalBackdrop")) {
+
+        $("modalBackdrop")
+            .addEventListener(
+                "click",
+                (event) => {
+
+                    if (
+                        event.target ===
+                        $("modalBackdrop")
+                    ) {
+
+                        closeModal();
+                    }
                 }
+            );
+    }
+
+
+    /* MONEY DASHBOARD */
+
+    if ($("toggleDashboardBtn")) {
+
+        $("toggleDashboardBtn")
+            .addEventListener(
+                "click",
+                toggleMoneyDashboard
+            );
+    }
+
+
+    if ($("closeDashboardBtn")) {
+
+        $("closeDashboardBtn")
+            .addEventListener(
+                "click",
+                closeMoneyDashboard
+            );
+    }
+
+
+    if ($("editMoneyPoolBtn")) {
+
+        $("editMoneyPoolBtn")
+            .addEventListener(
+                "click",
+                () =>
+                    openModal(
+                        "moneyPoolPanel"
+                    )
+            );
+    }
+
+
+    if ($("saveMoneyPoolBtn")) {
+
+        $("saveMoneyPoolBtn")
+            .addEventListener(
+                "click",
+                saveMoneyPool
+            );
+    }
+
+
+    /* EDIT DAY */
+
+    if ($("editDailyPlanBtn")) {
+
+        $("editDailyPlanBtn")
+            .addEventListener(
+                "click",
+                () =>
+                    openModal(
+                        "dailyPlanPanel"
+                    )
+            );
+    }
+
+
+    if ($("saveDailyPlanBtn")) {
+
+        $("saveDailyPlanBtn")
+            .addEventListener(
+                "click",
+                saveDailyPlan
+            );
+    }
+
+
+    /* DAILY INPUT LIVE TOTAL */
+
+    [
+        "dailyNeedsInput",
+        "dailyWantsInput",
+        "dailySavingsInput"
+    ].forEach(
+        (id) => {
+
+            const input = $(id);
+
+            if (input) {
+
+                input.addEventListener(
+                    "input",
+                    updateDailyAllocationTotal
+                );
             }
-        );
+        }
+    );
 
-    $("editDailyPlanBtn")
-        .addEventListener(
-            "click",
-            () =>
-                openModal(
-                    "dailyPlanPanel"
-                )
-        );
 
-    $("editBudgetsBtn")
-        .addEventListener(
-            "click",
-            () =>
-                openModal(
-                    "budgetPanel"
-                )
-        );
+    /* ADD TRANSACTION */
 
-    $("addTransactionBtn")
-        .addEventListener(
-            "click",
-            addTransaction
-        );
+    if ($("addTransactionBtn")) {
 
-    $("addAllowanceBtn")
-        .addEventListener(
-            "click",
-            addAllowance
-        );
+        $("addTransactionBtn")
+            .addEventListener(
+                "click",
+                addTransaction
+            );
+    }
 
-    $("transferMoneyBtn")
-        .addEventListener(
-            "click",
-            addTransfer
-        );
 
-    $("addDebtBtn")
-        .addEventListener(
-            "click",
-            addDebt
-        );
+    /* ALLOWANCE */
 
-    $("saveDailyPlanBtn")
-        .addEventListener(
-            "click",
-            saveDailyPlan
-        );
+    if ($("addAllowanceBtn")) {
 
-    $("saveBudgetsBtn")
-        .addEventListener(
-            "click",
-            saveBudgets
-        );
+        $("addAllowanceBtn")
+            .addEventListener(
+                "click",
+                addAllowance
+            );
+    }
 
-    $("dashboardDate")
-        .addEventListener(
-            "change",
-            () => {
-                $("transactionDate").value =
-                    $("dashboardDate").value;
 
-                $("historyDate").value =
-                    $("dashboardDate").value;
+    /* TRANSFER */
 
-                refreshAll();
-            }
-        );
+    if ($("transferMoneyBtn")) {
 
-    $("historyDate")
-        .addEventListener(
-            "change",
-            renderHistory
-        );
+        $("transferMoneyBtn")
+            .addEventListener(
+                "click",
+                addTransfer
+            );
+    }
 
-    $("previousDate")
-        .addEventListener(
-            "click",
-            () => {
-                $("historyDate").value =
-                    shiftDate(
-                        $("historyDate").value,
-                        -1
-                    );
 
-                renderHistory();
-            }
-        );
+    /* UTANG */
 
-    $("nextDate")
-        .addEventListener(
-            "click",
-            () => {
-                $("historyDate").value =
-                    shiftDate(
-                        $("historyDate").value,
-                        1
-                    );
+    if ($("addDebtBtn")) {
 
-                renderHistory();
-            }
-        );
+        $("addDebtBtn")
+            .addEventListener(
+                "click",
+                addDebt
+            );
+    }
+
+
+    /* =====================================================
+       TODAY'S BUDGET DATE PICKER
+
+       IMPORTANT:
+       Does NOT change Transaction History date.
+    ===================================================== */
+
+    if ($("dashboardDate")) {
+
+        $("dashboardDate")
+            .addEventListener(
+                "change",
+                () => {
+
+                    updateDailyAllocationAvailable();
+
+                    updateDailyDashboard();
+                }
+            );
+    }
+
+
+    /* =====================================================
+       TODAY'S BUDGET PREVIOUS DAY <
+    ===================================================== */
+
+    if ($("dashboardPreviousDate")) {
+
+        $("dashboardPreviousDate")
+            .addEventListener(
+                "click",
+                () => {
+
+                    $("dashboardDate").value =
+                        shiftDate(
+                            $("dashboardDate").value,
+                            -1
+                        );
+
+                    updateDailyAllocationAvailable();
+
+                    updateDailyDashboard();
+                }
+            );
+    }
+
+
+    /* =====================================================
+       TODAY'S BUDGET NEXT DAY >
+    ===================================================== */
+
+    if ($("dashboardNextDate")) {
+
+        $("dashboardNextDate")
+            .addEventListener(
+                "click",
+                () => {
+
+                    $("dashboardDate").value =
+                        shiftDate(
+                            $("dashboardDate").value,
+                            1
+                        );
+
+                    updateDailyAllocationAvailable();
+
+                    updateDailyDashboard();
+                }
+            );
+    }
+
+
+    /* TRANSACTION HISTORY DATE */
+
+    if ($("historyDate")) {
+
+        $("historyDate")
+            .addEventListener(
+                "change",
+                renderHistory
+            );
+    }
+
+
+    /* HISTORY PREVIOUS */
+
+    if ($("previousDate")) {
+
+        $("previousDate")
+            .addEventListener(
+                "click",
+                () => {
+
+                    $("historyDate").value =
+                        shiftDate(
+                            $("historyDate").value,
+                            -1
+                        );
+
+                    renderHistory();
+                }
+            );
+    }
+
+
+    /* HISTORY NEXT */
+
+    if ($("nextDate")) {
+
+        $("nextDate")
+            .addEventListener(
+                "click",
+                () => {
+
+                    $("historyDate").value =
+                        shiftDate(
+                            $("historyDate").value,
+                            1
+                        );
+
+                    renderHistory();
+                }
+            );
+    }
 }
 
+
+/* =========================================================
+   START APP
+========================================================= */
+
 initializeDates();
+
 bindEvents();
+
 loadData();
