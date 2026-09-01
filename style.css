@@ -1,145 +1,274 @@
-```css
+/* =====================================================
+   RESET
+===================================================== */
+
 * {
     box-sizing: border-box;
     margin: 0;
     padding: 0;
 }
 
-body {
-    font-family: Arial, sans-serif;
-    background: #f4f6f8;
-    color: #222;
+:root {
+    --bg: #1b1d21;
+    --card: #24272c;
+    --card-soft: #2b2f35;
+
+    --input: #202328;
+
+    --border: #3a3f46;
+    --border-soft: #32363c;
+
+    --text: #f2f2f2;
+    --text-soft: #b9bec6;
+    --text-muted: #858c95;
+
+    --button: #353a42;
+    --button-hover: #444a54;
+    --selected: #555c67;
+
+    --radius: 14px;
 }
+
+
+/* =====================================================
+   BODY
+===================================================== */
+
+body {
+    font-family: Arial, Helvetica, sans-serif;
+
+    background: var(--bg);
+    color: var(--text);
+
+    min-height: 100vh;
+
+    overflow-x: hidden;
+}
+
+
+/* =====================================================
+   MAIN CONTAINER
+===================================================== */
 
 .container {
-    width: 90%;
+    width: 92%;
     max-width: 1200px;
-    margin: 40px auto;
+
+    margin: 22px auto 30px;
 }
 
 
-/* =========================
+/* =====================================================
    HEADER
-   ========================= */
+===================================================== */
 
 header {
-    text-align: center;
-    margin-bottom: 25px;
+    margin-bottom: 16px;
 }
 
 header h1 {
-    margin-bottom: 8px;
+    font-size: 30px;
+    margin-bottom: 3px;
 }
 
 header p {
-    color: #666;
+    color: var(--text-soft);
+    font-size: 14px;
 }
 
 
-/* =========================
+/* =====================================================
    CARD
-   ========================= */
+===================================================== */
 
 .card {
-    background: white;
-    padding: 25px;
-    border-radius: 15px;
-    margin-bottom: 25px;
+    width: 100%;
+    min-width: 0;
 
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    background: var(--card);
+
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+
+    padding: 17px 20px;
+    margin-bottom: 14px;
+
+    box-shadow:
+        0 5px 18px rgba(0, 0, 0, 0.18);
 }
 
 .card h2 {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
+
+    font-size: 19px;
 }
 
 
-/* =========================
-   STARTING MONEY
-   ========================= */
-
-.starting-money {
-    display: flex;
-    gap: 10px;
-}
-
-.starting-money input {
-    flex: 1;
-}
-
-
-/* =========================
-   INPUTS
-   ========================= */
-
-.input-grid {
-    display: grid;
-    grid-template-columns: 1fr 2fr 1fr;
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.input-grid div {
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-}
+/* =====================================================
+   LABEL
+===================================================== */
 
 label {
     display: block;
-    font-weight: bold;
-    margin-bottom: 8px;
+
+    margin-bottom: 4px;
+
+    color: var(--text-soft);
+
+    font-size: 13px;
+    font-weight: 600;
 }
 
-input {
+
+/* =====================================================
+   INPUTS / SELECT
+===================================================== */
+
+input,
+select {
     width: 100%;
-    padding: 12px;
+    max-width: 100%;
 
-    border: 1px solid #ccc;
-    border-radius: 8px;
+    min-width: 0;
 
-    font-size: 15px;
+    padding: 8px 10px;
+
+    background: var(--input);
+    color: var(--text);
+
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    font-size: 14px;
+
+    outline: none;
+}
+
+input::placeholder {
+    color: var(--text-muted);
+}
+
+input:focus,
+select:focus {
+    border-color: #747c87;
+}
+
+input[type="date"] {
+    color-scheme: dark;
 }
 
 
-/* =========================
-   CHOICES
-   ========================= */
+/* =====================================================
+   STARTING MONEY
+===================================================== */
+
+.starting-money {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, minmax(0, 1fr)) auto;
+
+    gap: 10px;
+
+    align-items: end;
+
+    width: 100%;
+}
+
+.starting-balance-field {
+    min-width: 0;
+}
+
+.starting-money button {
+    min-height: 35px;
+
+    padding: 0 17px;
+
+    white-space: nowrap;
+
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    background: var(--button);
+    color: white;
+
+    cursor: pointer;
+}
+
+
+/* =====================================================
+   TRANSACTION INPUT
+===================================================== */
+
+.input-grid {
+    display: grid;
+
+    grid-template-columns:
+        minmax(0, 1fr)
+        minmax(0, 2fr)
+        minmax(0, 1fr);
+
+    gap: 10px;
+
+    margin-bottom: 13px;
+
+    width: 100%;
+}
+
+.input-grid > div {
+    min-width: 0;
+}
+
+
+/* =====================================================
+   CATEGORY / PAYMENT
+===================================================== */
 
 .choices {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+
+    gap: 8px;
+
+    margin-bottom: 13px;
 }
 
 .choice {
-    flex: 1;
+    width: 100%;
+    min-width: 0;
 
-    padding: 12px;
+    padding: 8px;
 
-    border: 2px solid #ddd;
-    border-radius: 8px;
+    background: var(--card-soft);
+    color: var(--text-soft);
 
-    background: white;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+
+    font-size: 13px;
+    font-weight: 600;
 
     cursor: pointer;
-
-    font-weight: bold;
 }
 
 .choice:hover {
-    background: #f1f1f1;
+    background: var(--button-hover);
 }
 
 .choice.selected {
-    border-color: #222;
-    background: #e9e9e9;
+    background: var(--selected);
+
+    border-color: #737b86;
+
+    color: white;
 }
 
 
-/* =========================
+/* =====================================================
    BUTTONS
-   ========================= */
+===================================================== */
 
 button {
     font-family: inherit;
@@ -148,104 +277,224 @@ button {
 .primary-btn {
     width: 100%;
 
-    padding: 14px;
+    padding: 9px;
 
-    border: none;
-    border-radius: 8px;
+    border: 1px solid #4a5059;
+    border-radius: 9px;
 
-    background: #222;
+    background: #393e46;
     color: white;
 
-    font-size: 16px;
     font-weight: bold;
 
     cursor: pointer;
 }
 
 .primary-btn:hover {
-    opacity: 0.85;
+    background: #484e57;
 }
 
 .secondary-btn {
-    padding: 10px 15px;
+    padding: 8px 12px;
 
-    border: none;
+    border: 1px solid var(--border);
     border-radius: 8px;
 
-    background: #222;
-    color: white;
+    background: var(--button);
+    color: var(--text);
 
     cursor: pointer;
 }
 
 
-/* =========================
+/* =====================================================
+   TRANSFER MONEY
+===================================================== */
+
+.transfer-box {
+    width: 100%;
+
+    margin-top: 14px;
+
+    padding: 12px 14px;
+
+    background: var(--card-soft);
+
+    border: 1px solid var(--border-soft);
+    border-radius: 11px;
+}
+
+.transfer-box h3 {
+    margin-bottom: 9px;
+
+    font-size: 16px;
+}
+
+.transfer-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+
+    gap: 8px;
+
+    width: 100%;
+
+    margin-bottom: 8px;
+}
+
+.transfer-grid > div {
+    min-width: 0;
+}
+
+.transfer-btn {
+    width: 100%;
+}
+
+
+/* =====================================================
    DASHBOARD
-   ========================= */
+===================================================== */
 
 .dashboard {
     display: grid;
 
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns:
+        minmax(0, 2fr)
+        minmax(300px, 1fr);
 
-    gap: 25px;
+    gap: 16px;
+
+    align-items: start;
+
+    width: 100%;
+}
+
+.dashboard > .card {
+    min-width: 0;
 }
 
 
-/* =========================
+/* =====================================================
    DATE NAVIGATION
-   ========================= */
+===================================================== */
 
 .date-navigation {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 20px;
+    display: grid;
+
+    grid-template-columns:
+        44px minmax(0, 1fr) 44px;
+
+    gap: 8px;
+
+    width: 100%;
+
+    margin-bottom: 8px;
 }
 
 .date-navigation button {
-    width: 45px;
+    width: 44px;
 
-    border: none;
+    border: 1px solid var(--border);
     border-radius: 8px;
 
-    background: #222;
+    background: var(--button);
     color: white;
 
     cursor: pointer;
-
-    font-size: 18px;
-}
-
-.date-navigation input {
-    flex: 1;
 }
 
 
-/* =========================
+/* =====================================================
+   EVENT
+===================================================== */
+
+.event-box {
+    width: 100%;
+
+    padding: 9px 11px;
+
+    margin-bottom: 9px;
+
+    background: var(--card-soft);
+
+    border: 1px solid var(--border-soft);
+    border-radius: 10px;
+}
+
+.event-input-row {
+    display: grid;
+
+    grid-template-columns:
+        minmax(0, 1fr) auto;
+
+    gap: 8px;
+
+    width: 100%;
+}
+
+.event-input-row > * {
+    min-width: 0;
+}
+
+.event-display {
+    margin-top: 6px;
+
+    padding: 6px 8px;
+
+    background: var(--input);
+
+    border-radius: 7px;
+
+    color: var(--text-soft);
+
+    font-size: 12px;
+
+    word-break: break-word;
+}
+
+
+/* =====================================================
    TRANSACTION
-   ========================= */
+===================================================== */
 
 .transaction {
-    display: flex;
+    display: grid;
 
-    justify-content: space-between;
+    grid-template-columns:
+        minmax(0, 1fr) auto;
+
+    gap: 10px;
+
     align-items: center;
 
-    padding: 15px 0;
+    width: 100%;
 
-    border-bottom: 1px solid #eee;
+    padding: 8px 0;
+
+    border-bottom:
+        1px solid var(--border-soft);
 }
 
 .transaction-info {
+    min-width: 0;
+
     display: flex;
     flex-direction: column;
 
-    gap: 5px;
+    gap: 2px;
+}
+
+.transaction-info strong {
+    word-break: break-word;
 }
 
 .transaction-info span {
-    color: #777;
-    font-size: 13px;
+    color: var(--text-muted);
+
+    font-size: 12px;
+
+    word-break: break-word;
 }
 
 .transaction-right {
@@ -253,67 +502,115 @@ button {
 
     align-items: center;
 
-    gap: 10px;
+    gap: 7px;
+
+    white-space: nowrap;
 }
 
+.transaction-right strong {
+    font-size: 13px;
+}
+
+
+/* =====================================================
+   DELETE BUTTON
+===================================================== */
+
 .delete-btn {
-    border: none;
+    padding: 6px 7px;
 
-    background: #eee;
+    border: 1px solid var(--border-soft);
+    border-radius: 7px;
 
-    padding: 7px 9px;
-
-    border-radius: 6px;
+    background: var(--card-soft);
+    color: var(--text-soft);
 
     cursor: pointer;
 }
 
 
-/* =========================
+/* =====================================================
    DAILY TOTAL
-   ========================= */
+===================================================== */
 
 .daily-total {
     display: flex;
 
     justify-content: space-between;
+    align-items: center;
 
-    margin-top: 20px;
+    gap: 10px;
 
-    padding-top: 15px;
+    margin-top: 9px;
 
-    border-top: 2px solid #ddd;
+    padding-top: 9px;
 
-    font-size: 17px;
+    border-top: 1px solid var(--border);
+
+    color: var(--text-soft);
+}
+
+.daily-total strong {
+    color: white;
 }
 
 
-/* =========================
+/* =====================================================
    SUMMARY
-   ========================= */
+===================================================== */
+
+.summary {
+    min-width: 0;
+}
 
 .summary-box {
-    padding: 18px;
+    width: 100%;
+    min-width: 0;
 
-    border: 1px solid #eee;
+    padding: 10px 13px;
 
-    border-radius: 10px;
+    margin-bottom: 8px;
 
-    margin-bottom: 15px;
+    background: var(--card-soft);
+
+    border: 1px solid var(--border-soft);
+    border-radius: 11px;
 }
 
 .summary-box h3 {
-    margin-bottom: 15px;
+    margin-bottom: 6px;
+
+    font-size: 15px;
 }
 
 .summary-row {
     display: flex;
 
     justify-content: space-between;
+    align-items: center;
 
-    padding: 10px 0;
+    gap: 10px;
 
-    border-bottom: 1px solid #eee;
+    width: 100%;
+
+    padding: 5px 0;
+
+    border-bottom:
+        1px solid var(--border-soft);
+
+    color: var(--text-soft);
+
+    font-size: 13px;
+}
+
+.summary-row span {
+    min-width: 0;
+}
+
+.summary-row strong {
+    flex-shrink: 0;
+
+    color: white;
 }
 
 .summary-row:last-child {
@@ -321,350 +618,290 @@ button {
 }
 
 .remaining {
-    font-size: 17px;
     font-weight: bold;
+
+    color: white;
 }
 
 
-/* =========================
-   DEBT
-   ========================= */
+/* =====================================================
+   UTANG
+===================================================== */
 
 #debtList {
-    margin-top: 15px;
+    width: 100%;
+
+    margin-top: 7px;
 }
 
 .debt-item {
-    display: flex;
+    display: grid;
 
-    justify-content: space-between;
+    grid-template-columns:
+        minmax(0, 1fr) auto;
+
+    gap: 8px;
 
     align-items: center;
 
-    padding: 10px 0;
+    width: 100%;
 
-    border-bottom: 1px solid #eee;
+    padding: 5px 0;
+
+    border-bottom:
+        1px solid var(--border-soft);
+}
+
+.debt-item > div {
+    min-width: 0;
+}
+
+.debt-item > div:last-child {
+    display: flex;
+
+    gap: 5px;
 }
 
 
-/* =========================
+/* =====================================================
    EMPTY
-   ========================= */
+===================================================== */
 
 .empty {
+    padding: 14px 5px;
+
     text-align: center;
 
-    padding: 30px;
+    color: var(--text-muted);
 
-    color: #888;
+    font-size: 13px;
 }
 
 
-/* =================================================
-   MOBILE PHONE UI
-   ================================================= */
+/* =====================================================
+   TABLET
+===================================================== */
+
+@media (max-width: 950px) {
+
+    .starting-money {
+        grid-template-columns:
+            repeat(3, minmax(0, 1fr));
+    }
+
+    .starting-money button {
+        grid-column: 1 / -1;
+
+        width: 100%;
+    }
+
+    .transfer-grid {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard {
+        grid-template-columns:
+            minmax(0, 1.6fr)
+            minmax(260px, 1fr);
+
+        gap: 12px;
+    }
+}
+
+
+/* =====================================================
+   PHONE
+===================================================== */
 
 @media (max-width: 768px) {
 
-    body {
-        background: #f4f6f8;
-    }
-
-
-    /* MAIN CONTAINER */
-
     .container {
-        width: 96%;
-        max-width: none;
-        margin: 12px auto;
+        width: 94%;
 
-        display: grid;
-
-        grid-template-columns: 1fr 1fr;
-
-        gap: 10px;
-
-        align-items: stretch;
+        margin: 10px auto 20px;
     }
-
-
-    /* HEADER */
 
     header {
-        grid-column: 1 / -1;
-
-        text-align: left;
-
-        margin-bottom: 2px;
-
-        padding: 3px;
+        margin-bottom: 10px;
     }
 
     header h1 {
-        font-size: 22px;
-        margin-bottom: 4px;
+        font-size: 23px;
     }
 
     header p {
         font-size: 12px;
     }
 
-
-    /* CARDS */
-
     .card {
-        padding: 12px;
+        padding: 11px 12px;
 
-        border-radius: 11px;
+        margin-bottom: 9px;
 
-        margin-bottom: 0;
+        border-radius: 12px;
     }
 
     .card h2 {
         font-size: 16px;
 
-        margin-bottom: 10px;
+        margin-bottom: 9px;
+    }
+
+    input,
+    select {
+        padding: 7px 8px;
     }
 
 
     /* STARTING MONEY */
 
-    .container > .card:first-of-type {
-        grid-column: 1;
-
-        height: fit-content;
-    }
-
     .starting-money {
-        display: flex;
-
-        flex-direction: column;
+        grid-template-columns: 1fr;
 
         gap: 6px;
     }
 
-    .starting-money input {
-        padding: 7px;
-
-        font-size: 12px;
-    }
-
     .starting-money button {
-        padding: 7px;
+        grid-column: auto;
 
-        font-size: 12px;
+        width: 100%;
     }
 
 
-    /* ADD TRANSACTION */
-
-    .container > .card:nth-of-type(2) {
-        grid-column: 1;
-
-        margin-top: 0;
-    }
+    /* TRANSACTION INPUT */
 
     .input-grid {
-        display: flex;
+        grid-template-columns: 1fr;
 
-        flex-direction: column;
-
-        gap: 7px;
+        gap: 6px;
 
         margin-bottom: 10px;
     }
 
-    .input-grid div {
-        gap: 4px;
-    }
 
-    label {
-        font-size: 12px;
-
-        margin-bottom: 4px;
-    }
-
-    input {
-        padding: 8px;
-
-        font-size: 12px;
-    }
-
-
-    /* CATEGORY + PAYMENT */
+    /* CATEGORY / PAYMENT */
 
     .choices {
-        display: flex;
+        grid-template-columns:
+            repeat(3, minmax(0, 1fr));
 
-        flex-direction: column;
-
-        gap: 5px;
+        gap: 6px;
 
         margin-bottom: 10px;
     }
 
     .choice {
-        padding: 8px;
+        padding: 8px 3px;
 
         font-size: 11px;
     }
 
 
-    /* ADD TRANSACTION BUTTON */
+    /* TRANSFER */
 
-    .primary-btn {
+    .transfer-box {
         padding: 9px;
 
-        font-size: 12px;
+        margin-top: 10px;
     }
 
-
-    /* DASHBOARD */
-
-    .dashboard {
-        display: contents;
-    }
-
-
-    /* TRANSACTION HISTORY */
-
-    .dashboard > .card:first-child {
-        grid-column: 2;
-
-        grid-row: 2 / span 2;
-
-        height: 100%;
-
-        min-height: 0;
-    }
-
-    .date-navigation {
-        display: flex;
+    .transfer-grid {
+        grid-template-columns: 1fr;
 
         gap: 5px;
+    }
 
-        margin-bottom: 10px;
+
+    /* STACK DASHBOARD */
+
+    .dashboard {
+        grid-template-columns: 1fr;
+
+        gap: 9px;
+    }
+
+
+    /* EVENT */
+
+    .event-input-row {
+        grid-template-columns: 1fr;
+    }
+
+    .event-input-row button {
+        width: 100%;
+    }
+
+
+    /* HISTORY */
+
+    .date-navigation {
+        grid-template-columns:
+            36px minmax(0, 1fr) 36px;
     }
 
     .date-navigation button {
-        width: 32px;
-
-        font-size: 13px;
+        width: 36px;
     }
-
-    .date-navigation input {
-        min-width: 0;
-
-        padding: 7px;
-    }
-
-
-    /* TRANSACTIONS */
 
     .transaction {
-        padding: 8px 0;
+        grid-template-columns:
+            minmax(0, 1fr) auto;
 
-        gap: 5px;
-    }
+        gap: 6px;
 
-    .transaction-info {
-        min-width: 0;
+        padding: 7px 0;
     }
 
     .transaction-info strong {
-        font-size: 11px;
-
-        word-break: break-word;
+        font-size: 12px;
     }
 
     .transaction-info span {
-        font-size: 9px;
-    }
-
-    .transaction-right {
-        gap: 4px;
-
-        white-space: nowrap;
+        font-size: 10px;
     }
 
     .transaction-right strong {
-        font-size: 10px;
-    }
-
-    .delete-btn {
-        padding: 4px 5px;
-
-        font-size: 10px;
-    }
-
-    .empty {
-        padding: 15px 3px;
-
         font-size: 11px;
-    }
-
-
-    /* DAILY TOTAL */
-
-    .daily-total {
-        margin-top: 10px;
-
-        padding-top: 8px;
-
-        font-size: 12px;
     }
 
 
     /* SUMMARY */
 
-    .dashboard > .summary {
-        grid-column: 1 / -1;
-
-        grid-row: 4;
-
-        margin-top: 0;
-
-        height: fit-content;
-    }
-
     .summary-box {
-        padding: 10px;
+        padding: 9px 10px;
 
-        margin-bottom: 8px;
-    }
-
-    .summary-box h3 {
-        font-size: 13px;
-
-        margin-bottom: 7px;
+        margin-bottom: 6px;
     }
 
     .summary-row {
-        padding: 6px 0;
+        padding: 4px 0;
 
-        font-size: 11px;
+        font-size: 12px;
     }
-
-    .remaining {
-        font-size: 13px;
-    }
-
-
-    /* DEBT */
-
-    .secondary-btn {
-        width: 100%;
-
-        padding: 8px;
-
-        font-size: 11px;
-    }
-
-    .debt-item {
-        padding: 7px 0;
-
-        font-size: 11px;
-    }
-
 }
-```
+
+
+/* =====================================================
+   VERY SMALL PHONES
+===================================================== */
+
+@media (max-width: 420px) {
+
+    .container {
+        width: 95%;
+    }
+
+    .choices {
+        grid-template-columns: 1fr;
+    }
+
+    .choice {
+        font-size: 12px;
+    }
+
+    .date-navigation {
+        grid-template-columns:
+            34px minmax(0, 1fr) 34px;
+    }
+}
