@@ -17,134 +17,37 @@
             </div>
         </div>
 
+        <button class="hud-money-card" id="hudMoneyCard" type="button" aria-expanded="false">
+            <span class="hud-money-label">MONEY REMAINING</span>
+            <strong id="hudTotalMoney">₱0.00</strong>
+            <div class="hud-wallet-mini">
+                <span>💵 Cash <b id="hudCashBalance">₱0.00</b></span>
+                <span>💳 Card <b id="hudCardBalance">₱0.00</b></span>
+            </div>
+            <div class="hud-money-details" id="hudMoneyDetails">
+                <span>🚆 Beep <b id="hudBeepBalance">₱0.00</b></span>
+                <span>🛒 Needs <b id="hudNeedsBalance">₱0.00</b></span>
+                <span>🎮 Wants <b id="hudWantsBalance">₱0.00</b></span>
+                <span>🏦 Savings <b id="hudSavingsBalance">₱0.00</b></span>
+            </div>
+            <small>Tap to expand</small>
+        </button>
+
         <nav class="side-nav">
             <button class="nav-btn active" data-panel="allowancePanel">💰 <span>Allowance</span></button>
             <button class="nav-btn" data-panel="transferPanel">🔄 <span>Transfer Money</span></button>
             <button class="nav-btn" data-panel="debtPanel">🧾 <span>Utang</span></button>
+            <button class="nav-btn" data-panel="moneyPoolPanel">⚙️ <span>Money Split</span></button>
         </nav>
 
         <p class="sync-note" id="syncStatus">Connecting to Firebase…</p>
     </aside>
 
     <main class="main-content">
-        <section class="dashboard-toggle-wrap">
-            <button id="toggleDashboardBtn" class="dashboard-toggle-btn">☰ Open Money Dashboard</button>
-        </section>
-
-        <section id="moneyDashboard" class="money-dashboard closed">
-            <div class="dashboard-panel card">
-                <div class="dashboard-panel-head">
-                    <div>
-                        <p class="eyebrow">YOUR MONEY</p>
-                        <h2>Money Dashboard</h2>
-                    </div>
-                    <button id="closeDashboardBtn" class="icon-btn">✕</button>
-                </div>
-
-                <div class="money-bars">
-                    <article class="money-bar-card total-bar-card">
-                        <div class="money-bar-head">
-                            <div>
-                                <span class="money-bar-label">💰 Total Money</span>
-                                <strong id="poolTotal">₱0.00</strong>
-                            </div>
-                            <span class="money-bar-fraction" id="totalPoolFraction">₱0.00 / ₱0.00</span>
-                        </div>
-                        <div class="money-pool-track">
-                            <div class="money-pool-fill total-pool-fill" id="totalPoolProgress"></div>
-                        </div>
-                        <div class="money-bar-footer">
-                            <span>Overall money remaining</span>
-                            <b id="totalPoolPercent">100%</b>
-                        </div>
-                    </article>
-
-                    <div class="pool-grid">
-                        <article class="money-bar-card">
-                            <div class="money-bar-head">
-                                <div>
-                                    <span class="money-bar-label">🛒 Needs</span>
-                                    <strong id="needsPool">₱0.00</strong>
-                                </div>
-                                <span class="money-bar-fraction" id="needsPoolFraction">₱0.00 / ₱0.00</span>
-                            </div>
-                            <div class="money-pool-track">
-                                <div class="money-pool-fill needs-pool-fill" id="needsPoolProgress"></div>
-                            </div>
-                            <div class="money-bar-footer"><span>School • Water • WiFi</span><b id="needsPoolPercent">100%</b></div>
-                        </article>
-
-                        <article class="money-bar-card">
-                            <div class="money-bar-head">
-                                <div>
-                                    <span class="money-bar-label">🎮 Wants</span>
-                                    <strong id="wantsPool">₱0.00</strong>
-                                </div>
-                                <span class="money-bar-fraction" id="wantsPoolFraction">₱0.00 / ₱0.00</span>
-                            </div>
-                            <div class="money-pool-track">
-                                <div class="money-pool-fill wants-pool-fill" id="wantsPoolProgress"></div>
-                            </div>
-                            <div class="money-bar-footer"><span>Food • Gym • Extras</span><b id="wantsPoolPercent">100%</b></div>
-                        </article>
-
-                        <article class="money-bar-card">
-                            <div class="money-bar-head">
-                                <div>
-                                    <span class="money-bar-label">🏦 Savings</span>
-                                    <strong id="savingsPool">₱0.00</strong>
-                                </div>
-                                <span class="money-bar-fraction" id="savingsPoolFraction">₱0.00 / ₱0.00</span>
-                            </div>
-                            <div class="money-pool-track">
-                                <div class="money-pool-fill savings-pool-fill" id="savingsPoolProgress"></div>
-                            </div>
-                            <div class="money-bar-footer"><span>Emergency only</span><b id="savingsPoolPercent">100%</b></div>
-                        </article>
-                    </div>
-                </div>
-
-
-                <div class="wallet-location-section">
-                    <div class="wallet-location-heading">
-                        <div>
-                            <span class="eyebrow">WHERE MY MONEY IS</span>
-                            <h3>Cash / Card / Beep</h3>
-                        </div>
-                    </div>
-
-                    <div class="wallet-location-grid">
-                        <div class="wallet-location-card">
-                            <span>💵 Cash</span>
-                            <strong id="cashBalance">₱0.00</strong>
-                        </div>
-
-                        <div class="wallet-location-card">
-                            <span>💳 Card</span>
-                            <strong id="cardBalance">₱0.00</strong>
-                        </div>
-
-                        <div class="wallet-location-card">
-                            <span>🚆 Beep</span>
-                            <strong id="beepBalance">₱0.00</strong>
-                        </div>
-                    </div>
-
-                    <p class="wallet-location-note">
-                        Transfers only move money between Cash, Card, and Beep. They do not change Needs, Wants, or Savings.
-                    </p>
-                </div>
-
-                <div class="dashboard-actions">
-                    <button class="small-btn" id="editMoneyPoolBtn">Set / Edit Money Split</button>
-                </div>
-            </div>
-        </section>
-
         <header class="topbar">
             <div>
                 <p class="eyebrow">PERSONAL MONEY DASHBOARD</p>
-                <h2>Today’s Budget</h2>
+                <h2>Daily Budget</h2>
             </div>
             <div class="dashboard-date-nav">
                 <button type="button" class="date-arrow-btn" id="dashboardPreviousDate" aria-label="Previous day">‹</button>
@@ -153,6 +56,7 @@
             </div>
         </header>
 
+        <section class="daily-workspace">
         <section class="daily-hero card">
             <div class="daily-top">
                 <div>
@@ -193,39 +97,28 @@
             </div>
         </section>
 
-        <section class="content-grid single-column">
             <section class="card transaction-card">
                 <h3>Add Transaction</h3>
 
-                <div class="form-grid three">
-                    <div>
-                        <label for="transactionDate">Date</label>
-                        <input type="date" id="transactionDate">
-                    </div>
-
+                <div class="form-grid two transaction-form-grid">
                     <div class="span-2">
                         <label for="description">What did you spend on?</label>
                         <input type="text" id="description" placeholder="e.g. Water, chicken, gym fee">
                     </div>
 
                     <div>
-                        <label for="amount">Amount</label>
-                        <input type="number" id="amount" min="0" step="0.01" placeholder="₱0.00">
-                    </div>
+    <label for="amount">Amount</label>
+    <input type="number" id="amount" min="0" step="0.01" placeholder="₱0.00">
+</div>
 
-                    <div>
-                        <label for="subcategory">Subcategory</label>
-                        <input type="text" id="subcategory" placeholder="e.g. School">
-                    </div>
-
-                    <div>
-                        <label for="paymentMethod">Paid Using</label>
-                        <select id="paymentMethod">
-                            <option value="Cash">💵 Cash</option>
-                            <option value="Card">💳 Card</option>
-                            <option value="Beep">🚆 Beep</option>
-                        </select>
-                    </div>
+<div>
+    <label for="paymentMethod">Paid Using</label>
+    <select id="paymentMethod">
+        <option value="Cash">💵 Cash</option>
+        <option value="Card">💳 Card</option>
+        <option value="Beep">🚆 Beep</option>
+    </select>
+</div>
                 </div>
 
                 <label>Category</label>
@@ -242,11 +135,7 @@
         <section class="card history-card">
             <div class="history-heading">
                 <h3>Transaction History</h3>
-                <div class="date-nav">
-                    <button id="previousDate" aria-label="Previous date">◀</button>
-                    <input type="date" id="historyDate">
-                    <button id="nextDate" aria-label="Next date">▶</button>
-                </div>
+                <span class="history-shared-date" id="historySharedDate">Selected day</span>
             </div>
 
             <div class="history-highlight" id="historyHighlight">
@@ -386,6 +275,20 @@
             <div>
                 <label>Base Money</label>
                 <input type="number" id="dailyLimit" min="0" step="0.01" value="0" readonly>
+            </div>
+        </div>
+
+        <div class="preset-section">
+            <div class="preset-heading">
+                <div><label>Quick Budget Presets</label><p class="daily-source-note">Tap recurring items to add them to today's allocation.</p></div>
+                <button type="button" class="small-btn" id="togglePresetManagerBtn">+ Manage Presets</button>
+            </div>
+            <div class="preset-grid" id="presetGrid"></div>
+            <div class="preset-manager hidden" id="presetManager">
+                <input type="text" id="presetName" placeholder="Name, e.g. Eggs">
+                <input type="number" id="presetAmount" min="0" step="0.01" placeholder="₱ Amount">
+                <select id="presetCategory"><option value="Needs">🛒 Needs</option><option value="Wants">🎮 Wants</option><option value="Savings">🏦 Savings</option></select>
+                <button type="button" class="small-btn" id="savePresetBtn">Save Preset</button>
             </div>
         </div>
 
