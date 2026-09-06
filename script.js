@@ -2,6 +2,7 @@ import {
     initializeApp
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-app.js";
 
+
 import {
     getFirestore,
     doc,
@@ -10,6 +11,18 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.18.0/firebase-firestore.js";
 
 
+import {
+    getAuth,
+    setPersistence,
+    browserLocalPersistence,
+    onAuthStateChanged,
+    createUserWithEmailAndPassword,
+    signInWithEmailAndPassword,
+    GoogleAuthProvider,
+    signInWithPopup,
+    signOut,
+    updateProfile
+} from "https://www.gstatic.com/firebasejs/12.18.0/firebase-auth.js";
 /* =========================================================
    FIREBASE
 ========================================================= */
@@ -24,8 +37,155 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
 const db = getFirestore(app);
-const budgetDoc = doc(db, "budgetTracker", "main");
+
+const auth = getAuth(app);
+
+const googleProvider =
+    new GoogleAuthProvider();
+
+setPersistence(
+    auth,
+    browserLocalPersistence
+).catch(
+    (error) => {
+        console.error(
+            "Auth persistence error:",
+            error
+        );
+    }
+);
+
+/*
+    OLD SHARED DATA
+    Keep this as migration backup.
+*/
+const legacyBudgetDoc =
+    doc(
+        db,
+        "budgetTracker",
+        "main"
+    );
+
+
+/*
+    This becomes the currently active
+    user's private budget document.
+*/
+let budgetDoc =
+    null;
+
+function getUserBudgetDoc(
+    user
+) {
+
+    return doc(
+        db,
+        "users",
+        user.uid,
+        "budgetTracker",
+        "main"
+    );
+}
+
+
+async function migrateLegacyBudgetIfNeeded(
+    user
+) {
+
+    const userBudgetDoc =
+        getUserBudgetDoc(
+            user
+        );
+
+
+    /*
+        Check if this user already has
+        personal budget data.
+    */
+    const userSnapshot =
+        await getDoc(
+            userBudgetDoc
+        );
+
+
+    if (
+        userSnapshot.exists()
+    ) {
+
+        console.log(
+            "Personal budget already exists."
+        );
+
+        return userBudgetDoc;
+    }
+
+
+    /*
+        No personal data yet.
+        Read the OLD shared budget.
+    */
+    const legacySnapshot =
+        await getDoc(
+            legacyBudgetDoc
+        );
+
+
+    if (
+        !legacySnapshot.exists()
+    ) {
+
+        console.log(
+            "No legacy budget found."
+        );
+
+        return userBudgetDoc;
+    }
+
+
+    const legacyData =
+        legacySnapshot.data();
+
+
+    /*
+        COPY ONLY.
+        This does NOT delete or modify
+        budgetTracker/main.
+    */
+    await setDoc(
+        userBudgetDoc,
+        legacyData
+    );
+
+
+    /*
+        Verify the copy really exists.
+    */
+    const verifySnapshot =
+        await getDoc(
+            userBudgetDoc
+        );
+
+
+    if (
+        !verifySnapshot.exists()
+    ) {
+
+        throw new Error(
+            "Migration verification failed."
+        );
+    }
+
+
+    console.log(
+        "Legacy budget safely copied to:",
+        user.uid
+    );
+
+
+    return userBudgetDoc;
+}
 
 
 /* =========================================================
@@ -37,6 +197,7 @@ let transfers = [];
 let debts = [];
 let allowanceEntries = [];
 let dailyPlans = {};
+let savingsVaultEntries = [];
 
 let moneyPoolBase = {
     Needs: 0,
@@ -381,43 +542,66 @@ function setMoneyPoolBar(
 function updateMoneyDashboard() {
 
     const needs =
-        categoryRemaining("Needs");
+        categoryRemaining(
+            "Needs"
+        );
 
     const wants =
-        categoryRemaining("Wants");
+        categoryRemaining(
+            "Wants"
+        );
 
     const savings =
-        categoryRemaining("Savings");
+        getSavingsVaultBalance();
+
 
     const totalRemaining =
         needs +
-        wants +
-        savings;
+        wants;
+
 
     const totalOriginal =
-        (Number(moneyPoolBase.Needs) || 0) +
-        (Number(moneyPoolBase.Wants) || 0) +
-        (Number(moneyPoolBase.Savings) || 0);
+        (
+            Number(
+                moneyPoolBase.Needs
+            ) || 0
+        ) +
+        (
+            Number(
+                moneyPoolBase.Wants
+            ) || 0
+        );
+
 
     if ($("needsPool")) {
+
         $("needsPool").textContent =
             money(needs);
     }
 
+
     if ($("wantsPool")) {
+
         $("wantsPool").textContent =
             money(wants);
     }
 
+
     if ($("savingsPool")) {
+
         $("savingsPool").textContent =
             money(savings);
     }
 
+
     if ($("poolTotal")) {
+
         $("poolTotal").textContent =
-            money(totalRemaining);
+            money(
+                totalRemaining
+            );
     }
+
 
     setMoneyPoolBar(
         "needs",
@@ -425,17 +609,13 @@ function updateMoneyDashboard() {
         moneyPoolBase.Needs
     );
 
+
     setMoneyPoolBar(
         "wants",
         wants,
         moneyPoolBase.Wants
     );
 
-    setMoneyPoolBar(
-        "savings",
-        savings,
-        moneyPoolBase.Savings
-    );
 
     setMoneyPoolBar(
         "total",
@@ -529,6 +709,55 @@ function calculateWalletBalances() {
                 balances[
                     transfer.to
                 ] += amount;
+            }
+        }
+        
+    );
+
+        /* SAVINGS VAULT */
+
+    savingsVaultEntries.forEach(
+        (entry) => {
+
+            const amount =
+                Number(
+                    entry.amount
+                ) || 0;
+
+
+            if (
+                entry.type ===
+                "deposit"
+            ) {
+
+                if (
+                    balances[
+                        entry.account
+                    ] !== undefined
+                ) {
+
+                    balances[
+                        entry.account
+                    ] -= amount;
+                }
+            }
+
+
+            if (
+                entry.type ===
+                "withdraw"
+            ) {
+
+                if (
+                    balances[
+                        entry.account
+                    ] !== undefined
+                ) {
+
+                    balances[
+                        entry.account
+                    ] += amount;
+                }
             }
         }
     );
@@ -626,30 +855,30 @@ function updateDailyAllocationTotal() {
             $("dailyWantsInput")?.value
         ) || 0;
 
-    const savings =
-        Number(
-            $("dailySavingsInput")?.value
-        ) || 0;
 
     const total =
         needs +
-        wants +
-        savings;
+        wants;
 
-    if ($("dailyAllocationTotal")) {
 
-        $("dailyAllocationTotal").textContent =
-            money(total);
+    if (
+        $("dailyAllocationTotal")
+    ) {
+
+        $("dailyAllocationTotal")
+            .textContent =
+                money(total);
     }
 
-    if ($("dailyLimit")) {
+
+    if (
+        $("dailyLimit")
+    ) {
 
         $("dailyLimit").value =
             total;
     }
 }
-
-
 /* =========================================================
    SPENDING
 ========================================================= */
@@ -992,12 +1221,12 @@ function updateDailyDashboard() {
 
 function renderHistory() {
 
-    if (!$("historyDate")) {
+    if (!$("dashboardDate")) {
         return;
     }
 
     const date =
-        $("historyDate").value;
+        $("dashboardDate").value;
 
     const state =
         calculateDailyBudgetState(date);
@@ -1148,14 +1377,6 @@ function renderHistory() {
                         ${escapeHtml(
                             row.item.category
                         )}
-
-                        ${
-                            row.item.subcategory
-                                ? ` • ${escapeHtml(
-                                    row.item.subcategory
-                                )}`
-                                : ""
-                        }
 
                         • ${escapeHtml(
                             row.item.payment
@@ -1632,13 +1853,228 @@ function renderDebts() {
 
 
 /* =========================================================
+   SHARED DATE + QUICK PRESETS
+========================================================= */
+
+function syncDailyDate(date) {
+
+    if (!date) {
+        return;
+    }
+
+    if ($("dashboardDate")) {
+        $("dashboardDate").value = date;
+    }
+
+    if ($("historySharedDate")) {
+
+        const d =
+            new Date(
+                date + "T00:00:00"
+            );
+
+        $("historySharedDate").textContent =
+            d.toLocaleDateString(
+                "en-PH",
+                {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric"
+                }
+            );
+    }
+
+    updateDailyAllocationAvailable();
+    updateDailyDashboard();
+    renderHistory();
+}
+
+
+function renderPresets() {
+
+    const grid =
+        $("presetGrid");
+
+    if (!grid) {
+        return;
+    }
+
+    grid.innerHTML = "";
+
+    if (!budgetPresets.length) {
+
+        grid.innerHTML = `
+            <p class="empty">
+                No presets yet. Add Eggs, Gym, School, etc.
+            </p>
+        `;
+
+        return;
+    }
+
+    budgetPresets
+    .filter(
+        (preset) =>
+            preset.category !==
+            "Savings"
+    )
+    .forEach(
+        (preset) => {
+
+            const btn =
+                document.createElement(
+                    "button"
+                );
+
+            btn.type = "button";
+
+            btn.className =
+                "preset-chip";
+
+            btn.dataset.presetId =
+                preset.id;
+
+            btn.innerHTML = `
+                <span class="preset-dot"></span>
+
+                <span>
+                    ${escapeHtml(
+                        preset.name
+                    )}
+                </span>
+
+                <b>
+                    ${money(
+                        preset.amount
+                    )}
+                </b>
+            `;
+
+            btn.addEventListener(
+                "click",
+                () =>
+                    togglePreset(
+                        preset,
+                        btn
+                    )
+            );
+
+            grid.appendChild(btn);
+        }
+    );
+}
+
+
+function togglePreset(
+    preset,
+    button
+) {
+
+    const inputId =
+        preset.category === "Needs"
+            ? "dailyNeedsInput"
+            : preset.category === "Wants"
+                ? "dailyWantsInput"
+                : "dailySavingsInput";
+
+    const input =
+        $(inputId);
+
+    if (!input) {
+        return;
+    }
+
+    const amount =
+        Number(
+            preset.amount
+        ) || 0;
+
+    const selected =
+        button.classList.toggle(
+            "selected"
+        );
+
+    input.value =
+        Math.max(
+            0,
+            (Number(input.value) || 0) +
+            (
+                selected
+                    ? amount
+                    : -amount
+            )
+        );
+
+    updateDailyAllocationTotal();
+}
+
+
+async function savePreset() {
+
+    const name =
+        $("presetName")
+            ?.value
+            .trim();
+
+    const amount =
+        Number(
+            $("presetAmount")
+                ?.value
+        );
+
+    const category =
+        $("presetCategory")
+            ?.value;
+
+        if (
+        category ===
+        "Savings"
+    ) {
+
+        alert(
+            "Use Savings Vault for savings."
+        );
+
+        return;
+    }
+
+    if (
+        !name ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+
+        alert(
+            "Enter a preset name and valid amount."
+        );
+
+        return;
+    }
+
+    budgetPresets.push({
+        id: uid(),
+        name,
+        amount,
+        category
+    });
+
+    $("presetName").value = "";
+    $("presetAmount").value = "";
+
+    await saveData();
+
+    renderPresets();
+}
+
+
+/* =========================================================
    ADD TRANSACTION
 ========================================================= */
 
 async function addTransaction() {
 
     const date =
-        $("transactionDate").value;
+        $("dashboardDate").value;
 
     const description =
         $("description")
@@ -1649,11 +2085,6 @@ async function addTransaction() {
         Number(
             $("amount").value
         );
-
-    const subcategory =
-        $("subcategory")
-            .value
-            .trim();
 
     const payment =
         $("paymentMethod").value;
@@ -1715,25 +2146,13 @@ async function addTransaction() {
         category:
             selectedCategory,
 
-        subcategory,
-
         payment
     });
 
 
     $("description").value = "";
+
     $("amount").value = "";
-    $("subcategory").value = "";
-
-    /*
-        Transaction History follows
-        the transaction you just added.
-
-        Today's Budget remains independent.
-    */
-
-    $("historyDate").value =
-        date;
 
 
     await saveData();
@@ -1758,16 +2177,11 @@ async function saveMoneyPool() {
             $("wantsMoneyInput").value
         );
 
-    const savingsRemaining =
-        Number(
-            $("savingsMoneyInput").value
-        );
 
     if (
         [
             needsRemaining,
-            wantsRemaining,
-            savingsRemaining
+            wantsRemaining
         ].some(
             (value) =>
                 !Number.isFinite(value) ||
@@ -1776,26 +2190,38 @@ async function saveMoneyPool() {
     ) {
 
         alert(
-            "Enter valid money amounts for Needs, Wants, and Savings."
+            "Enter valid money amounts for Needs and Wants."
         );
 
         return;
     }
 
+
+    /*
+        Keep legacy Savings data untouched.
+        New Savings is handled only by Savings Vault.
+    */
+
     moneyPoolBase = {
 
         Needs:
             needsRemaining +
-            categoryAllocated("Needs"),
+            categoryAllocated(
+                "Needs"
+            ),
 
         Wants:
             wantsRemaining +
-            categoryAllocated("Wants"),
+            categoryAllocated(
+                "Wants"
+            ),
 
         Savings:
-            savingsRemaining +
-            categoryAllocated("Savings")
+            Number(
+                moneyPoolBase.Savings
+            ) || 0
     };
+
 
     await saveData();
 
@@ -1829,16 +2255,11 @@ async function saveDailyPlan() {
             $("dailyWantsInput").value
         ) || 0;
 
-    const savings =
-        Number(
-            $("dailySavingsInput").value
-        ) || 0;
 
     if (
         [
             needs,
-            wants,
-            savings
+            wants
         ].some(
             (amount) =>
                 !Number.isFinite(amount) ||
@@ -1863,12 +2284,6 @@ async function saveDailyPlan() {
     const availableWants =
         categoryAvailableForDay(
             "Wants",
-            date
-        );
-
-    const availableSavings =
-        categoryAvailableForDay(
-            "Savings",
             date
         );
 
@@ -1903,38 +2318,42 @@ async function saveDailyPlan() {
     }
 
 
-    if (
-        savings >
-        availableSavings
-    ) {
+    /*
+        Preserve old Savings allocation for an existing day.
+        New days get zero legacy Savings.
+    */
 
-        alert(
-            `Not enough Savings money.\n\nAvailable: ${money(
-                availableSavings
-            )}`
-        );
-
-        return;
-    }
+    const oldSavings =
+        Number(
+            dailyPlans[
+                date
+            ]?.allocations?.Savings
+        ) || 0;
 
 
     const total =
         needs +
         wants +
-        savings;
+        oldSavings;
 
 
     dailyPlans[date] = {
 
         event,
 
-        limit: total,
+        limit:
+            total,
 
         allocations: {
 
-            Needs: needs,
-            Wants: wants,
-            Savings: savings
+            Needs:
+                needs,
+
+            Wants:
+                wants,
+
+            Savings:
+                oldSavings
         }
     };
 
@@ -2136,6 +2555,17 @@ async function addDebt() {
     await saveData();
 
     renderDebts();
+
+    renderPresets();
+
+    if (
+        $("historySharedDate") &&
+        $("dashboardDate")
+    ) {
+        syncDailyDate(
+            $("dashboardDate").value
+        );
+    }
 }
 
 
@@ -2146,60 +2576,51 @@ async function editDebt(id) {
             (item) =>
                 item.id === id
         );
-
     if (!debt) {
         return;
     }
 
-
-    const name =
+    const newName =
         prompt(
             "Name:",
             debt.name
         );
 
-    if (name === null) {
+    if (newName === null) {
         return;
     }
 
-
-    const rawAmount =
+    const newAmount =
         prompt(
             "Amount:",
             debt.amount
         );
 
-    if (
-        rawAmount === null
-    ) {
+    if (newAmount === null) {
         return;
     }
 
-
-    const amount =
-        Number(rawAmount);
-
+    const parsedAmount =
+        Number(newAmount);
 
     if (
-        !name.trim() ||
-        !Number.isFinite(amount) ||
-        amount <= 0
+        !newName.trim() ||
+        !Number.isFinite(parsedAmount) ||
+        parsedAmount <= 0
     ) {
 
         alert(
-            "Invalid debt details."
+            "Enter a valid name and amount."
         );
 
         return;
     }
 
-
     debt.name =
-        name.trim();
+        newName.trim();
 
     debt.amount =
-        amount;
-
+        parsedAmount;
 
     await saveData();
 
@@ -2213,11 +2634,12 @@ async function editDebt(id) {
 
 async function deleteTransaction(id) {
 
-    if (
-        !confirm(
+    const confirmed =
+        confirm(
             "Delete this transaction?"
-        )
-    ) {
+        );
+
+    if (!confirmed) {
         return;
     }
 
@@ -2235,11 +2657,12 @@ async function deleteTransaction(id) {
 
 async function deleteTransfer(id) {
 
-    if (
-        !confirm(
+    const confirmed =
+        confirm(
             "Delete this transfer?"
-        )
-    ) {
+        );
+
+    if (!confirmed) {
         return;
     }
 
@@ -2257,11 +2680,12 @@ async function deleteTransfer(id) {
 
 async function deleteAllowance(id) {
 
-    if (
-        !confirm(
+    const confirmed =
+        confirm(
             "Delete this allowance entry?"
-        )
-    ) {
+        );
+
+    if (!confirmed) {
         return;
     }
 
@@ -2279,11 +2703,12 @@ async function deleteAllowance(id) {
 
 async function deleteDebt(id) {
 
-    if (
-        !confirm(
+    const confirmed =
+        confirm(
             "Delete this utang?"
-        )
-    ) {
+        );
+
+    if (!confirmed) {
         return;
     }
 
@@ -2295,258 +2720,62 @@ async function deleteDebt(id) {
 
     await saveData();
 
-    refreshAll();
+    renderDebts();
 }
 
 
 /* =========================================================
-   MONEY DASHBOARD SLIDE
-========================================================= */
-
-function openMoneyDashboard() {
-
-    $("moneyDashboard")
-        .classList
-        .remove("closed");
-
-    $("toggleDashboardBtn").textContent =
-        "☰ Hide Money Dashboard";
-}
-
-
-function closeMoneyDashboard() {
-
-    $("moneyDashboard")
-        .classList
-        .add("closed");
-
-    $("toggleDashboardBtn").textContent =
-        "☰ Open Money Dashboard";
-}
-
-
-function toggleMoneyDashboard() {
-
-    if (
-        $("moneyDashboard")
-            .classList
-            .contains("closed")
-    ) {
-
-        openMoneyDashboard();
-
-    } else {
-
-        closeMoneyDashboard();
-    }
-}
-
-
-/* =========================================================
-   MODALS
-========================================================= */
-
-function openModal(panelId) {
-
-    $("modalBackdrop")
-        .classList
-        .remove("hidden");
-
-
-    document
-        .querySelectorAll(
-            "[data-modal-panel]"
-        )
-        .forEach(
-            (panel) => {
-
-                panel
-                    .classList
-                    .add("hidden");
-            }
-        );
-
-
-    $(panelId)
-        .classList
-        .remove("hidden");
-
-
-    /* EDIT DAY */
-
-    if (
-        panelId ===
-        "dailyPlanPanel"
-    ) {
-
-        const date =
-            $("dashboardDate").value;
-
-        const plan =
-            dailyPlans[date] || {
-                event: ""
-            };
-
-        const allocations =
-            getPlanAllocations(date);
-
-
-        $("eventName").value =
-            plan.event || "";
-
-        $("dailyNeedsInput").value =
-            allocations.Needs;
-
-        $("dailyWantsInput").value =
-            allocations.Wants;
-
-        $("dailySavingsInput").value =
-            allocations.Savings;
-
-
-        updateDailyAllocationAvailable();
-
-        updateDailyAllocationTotal();
-    }
-
-
-    /* EDIT MONEY */
-
-    if (
-        panelId ===
-        "moneyPoolPanel"
-    ) {
-
-        $("needsMoneyInput").value =
-            Math.max(
-                0,
-                categoryRemaining(
-                    "Needs"
-                )
-            );
-
-        $("wantsMoneyInput").value =
-            Math.max(
-                0,
-                categoryRemaining(
-                    "Wants"
-                )
-            );
-
-        $("savingsMoneyInput").value =
-            Math.max(
-                0,
-                categoryRemaining(
-                    "Savings"
-                )
-            );
-    }
-
-
-    if (
-        panelId ===
-        "allowancePanel"
-    ) {
-        renderAllowanceList();
-    }
-
-
-    if (
-        panelId ===
-        "transferPanel"
-    ) {
-        renderTransferList();
-    }
-
-
-    if (
-        panelId ===
-        "debtPanel"
-    ) {
-        renderDebts();
-    }
-}
-
-
-function closeModal() {
-
-    $("modalBackdrop")
-        .classList
-        .add("hidden");
-
-    document
-        .querySelectorAll(
-            "[data-modal-panel]"
-        )
-        .forEach(
-            (panel) => {
-
-                panel
-                    .classList
-                    .add("hidden");
-            }
-        );
-}
-
-
-/* =========================================================
-   FIREBASE PAYLOAD
-========================================================= */
-
-function getPayload() {
-
-    return {
-
-        version: 9,
-
-        transactions,
-
-        transfers,
-
-        debts,
-
-        allowanceEntries,
-
-        dailyPlans,
-
-        moneyPoolBase
-    };
-}
-
-
-/* =========================================================
-   SAVE
+   FIREBASE SAVE
 ========================================================= */
 
 async function saveData() {
 
-    if ($("syncStatus")) {
+    const data = {
 
-        $("syncStatus").textContent =
-            "Saving…";
+    transactions,
+
+    transfers,
+
+    debts,
+
+    allowanceEntries,
+
+    dailyPlans,
+
+    moneyPoolBase,
+
+    budgetPresets,
+
+    savingsVaultEntries
+};
+
+
+    /* LOCAL BACKUP */
+
+    try {
+
+        localStorage.setItem(
+            "budgetTrackerBackup",
+            JSON.stringify(data)
+        );
+
+    } catch (error) {
+
+        console.warn(
+            "Could not save local backup:",
+            error
+        );
     }
 
 
-    const payload =
-        getPayload();
-
-
-    localStorage.setItem(
-        "budgetTrackerV9",
-        JSON.stringify(payload)
-    );
-
+    /* FIREBASE */
 
     try {
 
         await setDoc(
             budgetDoc,
-            payload,
-            {
-                merge: true
-            }
+            data
         );
-
 
         if ($("syncStatus")) {
 
@@ -2561,244 +2790,135 @@ async function saveData() {
             error
         );
 
-
         if ($("syncStatus")) {
 
             $("syncStatus").textContent =
-                "Offline copy saved on this device";
+                "⚠ Local mode — Firebase unavailable";
         }
     }
 }
 
 
 /* =========================================================
-   LOCAL BACKUP
+   LOAD LOCAL BACKUP
 ========================================================= */
 
-function loadLocal() {
+function loadLocalBackup() {
 
     try {
 
-        const raw =
+        const stored =
             localStorage.getItem(
-                "budgetTrackerV9"
-            ) ||
+                "budgetTrackerBackup"
+            );
 
-            localStorage.getItem(
-                "budgetTrackerV8"
-            ) ||
+        if (!stored) {
+            return false;
+        }
 
-            localStorage.getItem(
-                "budgetTrackerV7"
-            ) ||
+        const data =
+            JSON.parse(stored);
 
-            localStorage.getItem(
-                "budgetTrackerV6"
-            ) ||
 
-            localStorage.getItem(
-                "budgetTrackerV5"
-            ) ||
-
-            localStorage.getItem(
-                "budgetTrackerV4"
-            ) ||
-
-            localStorage.getItem(
-                "budgetTrackerV3"
-            ) ||
-
-            localStorage.getItem(
-                "budgetTrackerV2"
+        transactions =
+            safeArray(
+                data.transactions
             );
 
 
-        return raw
-            ? JSON.parse(raw)
-            : null;
+        transfers =
+            safeArray(
+                data.transfers
+            );
+
+
+        debts =
+            safeArray(
+                data.debts
+            );
+
+
+        allowanceEntries =
+            safeArray(
+                data.allowanceEntries
+            );
+
+
+        dailyPlans =
+            data.dailyPlans &&
+            typeof data.dailyPlans ===
+                "object"
+
+                ? data.dailyPlans
+
+                : {};
+
+
+        moneyPoolBase = {
+
+            Needs:
+                Number(
+                    data.moneyPoolBase
+                        ?.Needs
+                ) || 0,
+
+            Wants:
+                Number(
+                    data.moneyPoolBase
+                        ?.Wants
+                ) || 0,
+
+            Savings:
+                Number(
+                    data.moneyPoolBase
+                        ?.Savings
+                ) || 0
+        };
+
+
+        budgetPresets =
+            safeArray(
+                data.budgetPresets
+            );
+
+                savingsVaultEntries =
+            safeArray(
+                data.savingsVaultEntries
+            );
+
+
+        return true;
 
     } catch (error) {
 
         console.error(
-            "Local backup error:",
+            "Local backup load error:",
             error
         );
 
-        return null;
+        return false;
     }
 }
 
 
 /* =========================================================
-   MIGRATION
-========================================================= */
-
-function migrateData(data = {}) {
-
-    transactions =
-        safeArray(
-            data.transactions
-        );
-
-    transfers =
-        safeArray(
-            data.transfers
-        );
-
-    debts =
-        safeArray(
-            data.debts
-        );
-
-    allowanceEntries =
-        safeArray(
-            data.allowanceEntries
-        );
-
-
-    /*
-        RESTORE OLD CASH / CARD / BEEP
-    */
-
-    if (
-        allowanceEntries.length === 0 &&
-        data.startingBalances &&
-        typeof data.startingBalances ===
-        "object"
-    ) {
-
-        const migrationDate =
-            getToday();
-
-        [
-            "Cash",
-            "Card",
-            "Beep"
-        ].forEach(
-            (account) => {
-
-                const amount =
-                    Number(
-                        data.startingBalances[
-                            account
-                        ]
-                    ) || 0;
-
-                if (
-                    amount > 0
-                ) {
-
-                    allowanceEntries.push({
-
-                        id: uid(),
-
-                        date:
-                            migrationDate,
-
-                        account,
-
-                        amount,
-
-                        migrated:
-                            true
-                    });
-                }
-            }
-        );
-    }
-
-
-    if (
-        data.dailyPlans &&
-        typeof data.dailyPlans ===
-        "object" &&
-        !Array.isArray(
-            data.dailyPlans
-        )
-    ) {
-
-        dailyPlans =
-            data.dailyPlans;
-
-    } else {
-
-        dailyPlans = {};
-    }
-
-
-    if (
-        data.moneyPoolBase &&
-        typeof data.moneyPoolBase ===
-        "object"
-    ) {
-
-        moneyPoolBase = {
-
-            Needs:
-                Number(
-                    data.moneyPoolBase.Needs
-                ) || 0,
-
-            Wants:
-                Number(
-                    data.moneyPoolBase.Wants
-                ) || 0,
-
-            Savings:
-                Number(
-                    data.moneyPoolBase.Savings
-                ) || 0
-        };
-
-    } else if (
-        data.categoryBudgets &&
-        typeof data.categoryBudgets ===
-        "object"
-    ) {
-
-        moneyPoolBase = {
-
-            Needs:
-                Number(
-                    data.categoryBudgets.Needs
-                ) || 0,
-
-            Wants:
-                Number(
-                    data.categoryBudgets.Wants
-                ) || 0,
-
-            Savings:
-                Number(
-                    data.categoryBudgets.Savings
-                ) || 0
-        };
-
-    } else {
-
-        moneyPoolBase = {
-            Needs: 0,
-            Wants: 0,
-            Savings: 0
-        };
-    }
-}
-
-
-/* =========================================================
-   LOAD
+   FIREBASE LOAD
 ========================================================= */
 
 async function loadData() {
 
-    if ($("syncStatus")) {
-
-        $("syncStatus").textContent =
-            "Loading Firebase data…";
-    }
+    let firebaseLoaded =
+        false;
 
 
     try {
+
+        if ($("syncStatus")) {
+
+            $("syncStatus").textContent =
+                "Connecting to Firebase...";
+        }
+
 
         const snapshot =
             await getDoc(
@@ -2810,17 +2930,79 @@ async function loadData() {
             snapshot.exists()
         ) {
 
-            migrateData(
-                snapshot.data()
-            );
+            const data =
+                snapshot.data();
 
 
-            localStorage.setItem(
-                "budgetTrackerV9",
-                JSON.stringify(
-                    getPayload()
-                )
-            );
+            transactions =
+                safeArray(
+                    data.transactions
+                );
+
+
+            transfers =
+                safeArray(
+                    data.transfers
+                );
+
+
+            debts =
+                safeArray(
+                    data.debts
+                );
+
+
+            allowanceEntries =
+                safeArray(
+                    data.allowanceEntries
+                );
+
+
+            dailyPlans =
+                data.dailyPlans &&
+                typeof data.dailyPlans ===
+                    "object"
+
+                    ? data.dailyPlans
+
+                    : {};
+
+
+            moneyPoolBase = {
+
+                Needs:
+                    Number(
+                        data.moneyPoolBase
+                            ?.Needs
+                    ) || 0,
+
+                Wants:
+                    Number(
+                        data.moneyPoolBase
+                            ?.Wants
+                    ) || 0,
+
+                Savings:
+                    Number(
+                        data.moneyPoolBase
+                            ?.Savings
+                    ) || 0
+            };
+
+
+            budgetPresets =
+                safeArray(
+                    data.budgetPresets
+                );
+
+            savingsVaultEntries =
+                safeArray(
+                    data.savingsVaultEntries
+                );
+
+
+            firebaseLoaded =
+                true;
 
 
             if ($("syncStatus")) {
@@ -2831,15 +3013,11 @@ async function loadData() {
 
         } else {
 
-            const local =
-                loadLocal();
+            if ($("syncStatus")) {
 
-            if (local) {
-
-                migrateData(local);
+                $("syncStatus").textContent =
+                    "✓ Firebase connected";
             }
-
-            await saveData();
         }
 
     } catch (error) {
@@ -2849,20 +3027,27 @@ async function loadData() {
             error
         );
 
-
-        const local =
-            loadLocal();
-
-        if (local) {
-
-            migrateData(local);
-        }
-
-
         if ($("syncStatus")) {
 
             $("syncStatus").textContent =
-                "Offline mode • using device backup";
+                "⚠ Firebase unavailable — checking local backup";
+        }
+    }
+
+
+    if (!firebaseLoaded) {
+
+        const localLoaded =
+            loadLocalBackup();
+
+
+        if (
+            localLoaded &&
+            $("syncStatus")
+        ) {
+
+            $("syncStatus").textContent =
+                "⚠ Loaded local backup";
         }
     }
 
@@ -2892,6 +3077,313 @@ function refreshAll() {
     renderTransferList();
 
     renderDebts();
+
+    renderPresets();
+
+    updateHudMoney();
+}
+
+
+/* =========================================================
+   HUD MONEY
+========================================================= */
+
+function updateHudMoney() {
+
+    const balances =
+        calculateWalletBalances();
+
+    const needs =
+        categoryRemaining("Needs");
+
+    const wants =
+        categoryRemaining("Wants");
+
+    const savings =
+    getSavingsVaultBalance();
+
+const total =
+    needs +
+    wants;
+
+
+    if ($("hudTotalMoney")) {
+
+        $("hudTotalMoney").textContent =
+            money(total);
+    }
+
+
+    if ($("hudCashBalance")) {
+
+        $("hudCashBalance").textContent =
+            money(balances.Cash);
+    }
+
+
+    if ($("hudCardBalance")) {
+
+        $("hudCardBalance").textContent =
+            money(balances.Card);
+    }
+
+
+    if ($("hudBeepBalance")) {
+
+        $("hudBeepBalance").textContent =
+            money(balances.Beep);
+    }
+
+
+    if ($("hudNeedsBalance")) {
+
+        $("hudNeedsBalance").textContent =
+            money(needs);
+    }
+
+
+    if ($("hudWantsBalance")) {
+
+        $("hudWantsBalance").textContent =
+            money(wants);
+    }
+
+
+    if ($("hudSavingsBalance")) {
+
+        $("hudSavingsBalance").textContent =
+            money(savings);
+    }
+}
+
+
+/* =========================================================
+   MODALS
+========================================================= */
+
+function closeModal() {
+
+    const backdrop =
+        $("modalBackdrop");
+
+    if (!backdrop) {
+        return;
+    }
+
+
+    backdrop.classList.add(
+        "hidden"
+    );
+
+
+    document
+        .querySelectorAll(
+            "[data-modal-panel]"
+        )
+        .forEach(
+            (panel) => {
+
+                panel.classList.add(
+                    "hidden"
+                );
+            }
+        );
+}
+
+
+function openModal(panelId) {
+
+    const backdrop =
+        $("modalBackdrop");
+
+    const panel =
+        $(panelId);
+
+
+    if (
+        !backdrop ||
+        !panel
+    ) {
+        return;
+    }
+
+
+    document
+        .querySelectorAll(
+            "[data-modal-panel]"
+        )
+        .forEach(
+            (item) => {
+
+                item.classList.add(
+                    "hidden"
+                );
+            }
+        );
+
+
+    panel.classList.remove(
+        "hidden"
+    );
+
+
+    backdrop.classList.remove(
+        "hidden"
+    );
+}
+
+
+/* =========================================================
+   OPEN DAILY PLAN
+========================================================= */
+
+function openDailyPlan() {
+
+    const date =
+        $("dashboardDate").value;
+
+
+    const plan =
+        dailyPlans[date] || {};
+
+
+    const allocations =
+        getPlanAllocations(
+            date
+        );
+
+
+    $("eventName").value =
+        plan.event || "";
+
+
+    $("dailyNeedsInput").value =
+        allocations.Needs;
+
+
+    $("dailyWantsInput").value =
+        allocations.Wants;
+
+
+    $("dailySavingsInput").value =
+        allocations.Savings;
+
+
+    document
+        .querySelectorAll(
+            ".preset-chip"
+        )
+        .forEach(
+            (button) => {
+
+                button.classList.remove(
+                    "selected"
+                );
+            }
+        );
+
+
+    updateDailyAllocationAvailable();
+
+    updateDailyAllocationTotal();
+
+    openModal(
+        "dailyPlanPanel"
+    );
+}
+
+
+/* =========================================================
+   OPEN MONEY SPLIT
+========================================================= */
+
+function openMoneyPool() {
+
+    $("needsMoneyInput").value =
+        Math.max(
+            0,
+            categoryRemaining(
+                "Needs"
+            )
+        );
+
+
+    $("wantsMoneyInput").value =
+        Math.max(
+            0,
+            categoryRemaining(
+                "Wants"
+            )
+        );
+
+
+    $("savingsMoneyInput").value =
+        Math.max(
+            0,
+            categoryRemaining(
+                "Savings"
+            )
+        );
+
+
+    openModal(
+        "moneyPoolPanel"
+    );
+}
+
+
+/* =========================================================
+   MASTER DATE
+========================================================= */
+
+function changeMasterDate(
+    amount
+) {
+
+    const current =
+        $("dashboardDate").value ||
+        getToday();
+
+
+    const next =
+        shiftDate(
+            current,
+            amount
+        );
+
+
+    syncDailyDate(
+        next
+    );
+}
+
+
+/* =========================================================
+   CATEGORY BUTTONS
+========================================================= */
+
+function selectCategory(
+    category
+) {
+
+    selectedCategory =
+        category;
+
+
+    document
+        .querySelectorAll(
+            ".choice"
+        )
+        .forEach(
+            (button) => {
+
+                button.classList.toggle(
+                    "selected",
+                    button.dataset.category ===
+                        category
+                );
+            }
+        );
 }
 
 
@@ -2899,85 +3391,137 @@ function refreshAll() {
    INITIAL DATES
 ========================================================= */
 
-function initializeDates() {
+function setInitialDates() {
 
     const today =
         getToday();
 
 
     if ($("dashboardDate")) {
+
         $("dashboardDate").value =
             today;
     }
 
-    if ($("transactionDate")) {
-        $("transactionDate").value =
-            today;
-    }
-
-    if ($("historyDate")) {
-        $("historyDate").value =
-            today;
-    }
 
     if ($("allowanceDate")) {
+
         $("allowanceDate").value =
             today;
     }
 
+
     if ($("transferDate")) {
+
         $("transferDate").value =
             today;
+    }
+
+
+    syncDailyDate(
+        today
+    );
+}
+
+/* =========================================================
+   QUICK BUDGET PRESET STORAGE
+========================================================= */
+
+/*
+    Declared here because all functions above only USE this
+    variable when the app actually starts running.
+*/
+
+let budgetPresets = [];
+
+
+/* =========================================================
+   OPEN PRESET / DAILY PLAN CORRECTLY
+========================================================= */
+
+function resetPresetSelections() {
+
+    document
+        .querySelectorAll(
+            ".preset-chip"
+        )
+        .forEach(
+            (button) => {
+
+                button.classList.remove(
+                    "selected"
+                );
+            }
+        );
+}
+
+
+/* =========================================================
+   HUD EXPAND / COLLAPSE
+========================================================= */
+
+function toggleHudMoney() {
+
+    const card =
+        $("hudMoneyCard");
+
+    if (!card) {
+        return;
+    }
+
+
+    const expanded =
+        card.classList.toggle(
+            "expanded"
+        );
+
+
+    card.setAttribute(
+        "aria-expanded",
+        String(expanded)
+    );
+
+
+    const helper =
+        card.querySelector(
+            "small"
+        );
+
+    if (helper) {
+
+        helper.textContent =
+            expanded
+                ? "Tap to collapse"
+                : "Tap to expand";
     }
 }
 
 
 /* =========================================================
-   EVENT LISTENERS
+   PRESET MANAGER
 ========================================================= */
 
-function bindEvents() {
+function togglePresetManager() {
+
+    const manager =
+        $("presetManager");
+
+    if (!manager) {
+        return;
+    }
 
 
-    /* TRANSACTION CATEGORY */
-
-    document
-        .querySelectorAll(
-            ".choice[data-category]"
-        )
-        .forEach(
-            (button) => {
-
-                button.addEventListener(
-                    "click",
-                    () => {
-
-                        selectedCategory =
-                            button.dataset.category;
-
-                        document
-                            .querySelectorAll(
-                                ".choice[data-category]"
-                            )
-                            .forEach(
-                                (item) => {
-
-                                    item.classList.remove(
-                                        "selected"
-                                    );
-                                }
-                            );
-
-                        button.classList.add(
-                            "selected"
-                        );
-                    }
-                );
-            }
-        );
+    manager.classList.toggle(
+        "hidden"
+    );
+}
 
 
-    /* SIDEBAR */
+/* =========================================================
+   SIDEBAR MODAL BUTTONS
+========================================================= */
+
+function bindSidebarButtons() {
 
     document
         .querySelectorAll(
@@ -3003,20 +3547,69 @@ function bindEvents() {
                                 }
                             );
 
+
                         button.classList.add(
                             "active"
                         );
 
+
+                        const panelId =
+                            button.dataset.panel;
+
+
+                        if (
+                            panelId ===
+                            "moneyPoolPanel"
+                        ) {
+
+                            openMoneyPool();
+
+                            return;
+                        }
+
+
                         openModal(
-                            button.dataset.panel
+                            panelId
                         );
                     }
                 );
             }
         );
+}
 
 
-    /* CLOSE MODAL */
+/* =========================================================
+   CATEGORY BUTTONS
+========================================================= */
+
+function bindCategoryButtons() {
+
+    document
+        .querySelectorAll(
+            ".choice[data-category]"
+        )
+        .forEach(
+            (button) => {
+
+                button.addEventListener(
+                    "click",
+                    () => {
+
+                        selectCategory(
+                            button.dataset.category
+                        );
+                    }
+                );
+            }
+        );
+}
+
+
+/* =========================================================
+   MODAL EVENTS
+========================================================= */
+
+function bindModalEvents() {
 
     document
         .querySelectorAll(
@@ -3052,62 +3645,86 @@ function bindEvents() {
     }
 
 
-    /* MONEY DASHBOARD */
+    document.addEventListener(
+        "keydown",
+        (event) => {
 
-    if ($("toggleDashboardBtn")) {
+            if (
+                event.key ===
+                "Escape"
+            ) {
 
-        $("toggleDashboardBtn")
+                closeModal();
+            }
+        }
+    );
+}
+
+
+/* =========================================================
+   MASTER DATE EVENTS
+========================================================= */
+
+function bindMasterDateEvents() {
+
+    if ($("dashboardDate")) {
+
+        $("dashboardDate")
             .addEventListener(
-                "click",
-                toggleMoneyDashboard
+                "change",
+                () => {
+
+                    syncDailyDate(
+                        $("dashboardDate").value
+                    );
+                }
             );
     }
 
 
-    if ($("closeDashboardBtn")) {
+    if ($("dashboardPreviousDate")) {
 
-        $("closeDashboardBtn")
+        $("dashboardPreviousDate")
             .addEventListener(
                 "click",
-                closeMoneyDashboard
+                () => {
+
+                    changeMasterDate(
+                        -1
+                    );
+                }
             );
     }
 
 
-    if ($("editMoneyPoolBtn")) {
+    if ($("dashboardNextDate")) {
 
-        $("editMoneyPoolBtn")
+        $("dashboardNextDate")
             .addEventListener(
                 "click",
-                () =>
-                    openModal(
-                        "moneyPoolPanel"
-                    )
+                () => {
+
+                    changeMasterDate(
+                        1
+                    );
+                }
             );
     }
+}
 
 
-    if ($("saveMoneyPoolBtn")) {
+/* =========================================================
+   DAILY PLAN EVENTS
+========================================================= */
 
-        $("saveMoneyPoolBtn")
-            .addEventListener(
-                "click",
-                saveMoneyPool
-            );
-    }
-
-
-    /* EDIT DAY */
+function bindDailyPlanEvents() {
 
     if ($("editDailyPlanBtn")) {
 
         $("editDailyPlanBtn")
             .addEventListener(
                 "click",
-                () =>
-                    openModal(
-                        "dailyPlanPanel"
-                    )
+                openDailyPlan
             );
     }
 
@@ -3122,8 +3739,6 @@ function bindEvents() {
     }
 
 
-    /* DAILY INPUT LIVE TOTAL */
-
     [
         "dailyNeedsInput",
         "dailyWantsInput",
@@ -3131,20 +3746,79 @@ function bindEvents() {
     ].forEach(
         (id) => {
 
-            const input = $(id);
+            const input =
+                $(id);
 
-            if (input) {
-
-                input.addEventListener(
-                    "input",
-                    updateDailyAllocationTotal
-                );
+            if (!input) {
+                return;
             }
+
+
+            input.addEventListener(
+                "input",
+                () => {
+
+                    /*
+                        Manual editing means preset buttons
+                        may no longer exactly represent the
+                        input amount, so remove selected state.
+                    */
+
+                    resetPresetSelections();
+
+                    updateDailyAllocationTotal();
+                }
+            );
         }
     );
 
 
-    /* ADD TRANSACTION */
+    if ($("togglePresetManagerBtn")) {
+
+        $("togglePresetManagerBtn")
+            .addEventListener(
+                "click",
+                togglePresetManager
+            );
+    }
+
+
+    if ($("savePresetBtn")) {
+
+        $("savePresetBtn")
+            .addEventListener(
+                "click",
+                savePreset
+            );
+    }
+}
+
+
+/* =========================================================
+   MONEY + TRANSACTION EVENTS
+========================================================= */
+
+function bindMoneyEvents() {
+
+    if ($("hudMoneyCard")) {
+
+        $("hudMoneyCard")
+            .addEventListener(
+                "click",
+                toggleHudMoney
+            );
+    }
+
+
+    if ($("saveMoneyPoolBtn")) {
+
+        $("saveMoneyPoolBtn")
+            .addEventListener(
+                "click",
+                saveMoneyPool
+            );
+    }
+
 
     if ($("addTransactionBtn")) {
 
@@ -3156,8 +3830,6 @@ function bindEvents() {
     }
 
 
-    /* ALLOWANCE */
-
     if ($("addAllowanceBtn")) {
 
         $("addAllowanceBtn")
@@ -3167,8 +3839,6 @@ function bindEvents() {
             );
     }
 
-
-    /* TRANSFER */
 
     if ($("transferMoneyBtn")) {
 
@@ -3180,8 +3850,6 @@ function bindEvents() {
     }
 
 
-    /* UTANG */
-
     if ($("addDebtBtn")) {
 
         $("addDebtBtn")
@@ -3190,129 +3858,88 @@ function bindEvents() {
                 addDebt
             );
     }
+}
 
 
-    /* =====================================================
-       TODAY'S BUDGET DATE PICKER
+/* =========================================================
+   ENTER KEY QUALITY OF LIFE
+========================================================= */
 
-       IMPORTANT:
-       Does NOT change Transaction History date.
-    ===================================================== */
+function bindEnterKeys() {
 
-    if ($("dashboardDate")) {
+    if ($("description")) {
 
-        $("dashboardDate")
+        $("description")
             .addEventListener(
-                "change",
-                () => {
+                "keydown",
+                (event) => {
 
-                    updateDailyAllocationAvailable();
+                    if (
+                        event.key ===
+                        "Enter"
+                    ) {
 
-                    updateDailyDashboard();
+                        $("amount")
+                            ?.focus();
+                    }
                 }
             );
     }
 
 
-    /* =====================================================
-       TODAY'S BUDGET PREVIOUS DAY <
-    ===================================================== */
+    if ($("amount")) {
 
-    if ($("dashboardPreviousDate")) {
-
-        $("dashboardPreviousDate")
+        $("amount")
             .addEventListener(
-                "click",
-                () => {
+                "keydown",
+                (event) => {
 
-                    $("dashboardDate").value =
-                        shiftDate(
-                            $("dashboardDate").value,
-                            -1
-                        );
+                    if (
+                        event.key ===
+                        "Enter"
+                    ) {
 
-                    updateDailyAllocationAvailable();
-
-                    updateDailyDashboard();
+                        addTransaction();
+                    }
                 }
             );
     }
 
 
-    /* =====================================================
-       TODAY'S BUDGET NEXT DAY >
-    ===================================================== */
+    if ($("presetName")) {
 
-    if ($("dashboardNextDate")) {
-
-        $("dashboardNextDate")
+        $("presetName")
             .addEventListener(
-                "click",
-                () => {
+                "keydown",
+                (event) => {
 
-                    $("dashboardDate").value =
-                        shiftDate(
-                            $("dashboardDate").value,
-                            1
-                        );
+                    if (
+                        event.key ===
+                        "Enter"
+                    ) {
 
-                    updateDailyAllocationAvailable();
-
-                    updateDailyDashboard();
+                        $("presetAmount")
+                            ?.focus();
+                    }
                 }
             );
     }
 
 
-    /* TRANSACTION HISTORY DATE */
+    if ($("presetAmount")) {
 
-    if ($("historyDate")) {
-
-        $("historyDate")
+        $("presetAmount")
             .addEventListener(
-                "change",
-                renderHistory
-            );
-    }
+                "keydown",
+                (event) => {
 
+                    if (
+                        event.key ===
+                        "Enter"
+                    ) {
 
-    /* HISTORY PREVIOUS */
-
-    if ($("previousDate")) {
-
-        $("previousDate")
-            .addEventListener(
-                "click",
-                () => {
-
-                    $("historyDate").value =
-                        shiftDate(
-                            $("historyDate").value,
-                            -1
-                        );
-
-                    renderHistory();
-                }
-            );
-    }
-
-
-    /* HISTORY NEXT */
-
-    if ($("nextDate")) {
-
-        $("nextDate")
-            .addEventListener(
-                "click",
-                () => {
-
-                    $("historyDate").value =
-                        shiftDate(
-                            $("historyDate").value,
-                            1
-                        );
-
-                    renderHistory();
+                        savePreset();
+                    }
                 }
             );
     }
@@ -3320,11 +3947,4122 @@ function bindEvents() {
 
 
 /* =========================================================
-   START APP
+   BIND EVERYTHING
 ========================================================= */
 
-initializeDates();
+function bindEvents() {
 
-bindEvents();
+    bindSidebarButtons();
 
-loadData();
+    bindCategoryButtons();
+
+    bindModalEvents();
+
+    bindMasterDateEvents();
+
+    bindDailyPlanEvents();
+
+    bindMoneyEvents();
+
+    bindEnterKeys();
+}
+
+
+/* =========================================================
+   DEFAULT PRESETS
+========================================================= */
+
+function createStarterPresetsIfNeeded() {
+
+    if (
+        budgetPresets.length >
+        0
+    ) {
+
+        return;
+    }
+
+
+    /*
+        Start EMPTY intentionally.
+
+        This means the app will not force Eggs/Gym/etc.
+        into the user's data.
+
+        Presets are created manually through:
+        + Manage Presets
+    */
+}
+
+
+/* =========================================================
+   APP INITIALIZATION
+========================================================= */
+
+async function startApp() {
+
+    /*
+        1. Set today's dates first so the interface
+           never starts with an empty master date.
+    */
+
+    setInitialDates();
+
+
+    /*
+        2. Select Needs as the default transaction
+           category.
+    */
+
+    selectCategory(
+        "Needs"
+    );
+
+
+    /*
+        3. Attach all button/input events.
+    */
+
+    bindEvents();
+
+
+    /*
+        4. Load Firebase data.
+    */
+
+    await loadData();
+
+
+    /*
+        5. Presets come from Firebase/local data.
+    */
+
+    createStarterPresetsIfNeeded();
+
+
+    /*
+        6. Make sure every part of the UI reflects
+           the loaded data.
+    */
+
+    refreshAll();
+
+
+    /*
+        7. Re-sync the shared selected date after
+           Firebase has finished loading.
+    */
+
+    syncDailyDate(
+        $("dashboardDate")?.value ||
+        getToday()
+    );
+
+
+    /*
+        8. Final HUD refresh.
+    */
+
+    updateHudMoney();
+}
+
+
+/* =========================================================
+   AUTH UI
+========================================================= */
+
+function createAuthScreen() {
+
+    if (
+        document.getElementById(
+            "authScreen"
+        )
+    ) {
+        return;
+    }
+
+
+    const authScreen =
+        document.createElement(
+            "div"
+        );
+
+    authScreen.id =
+        "authScreen";
+
+
+    authScreen.innerHTML = `
+        <div class="auth-card">
+
+            <div class="auth-logo">
+                💰
+            </div>
+
+            <h1>
+                Budget Tracker
+            </h1>
+
+            <p class="auth-subtitle">
+                Sign in to access your personal budget.
+            </p>
+
+
+            <div class="auth-tabs">
+
+                <button
+                    type="button"
+                    id="showLoginBtn"
+                    class="auth-tab active"
+                >
+                    Login
+                </button>
+
+                <button
+                    type="button"
+                    id="showRegisterBtn"
+                    class="auth-tab"
+                >
+                    Register
+                </button>
+
+            </div>
+
+
+            <div
+                id="registerNameWrap"
+                style="display:none;"
+            >
+                <label>
+                    Name
+                </label>
+
+                <input
+                    type="text"
+                    id="authName"
+                    placeholder="Ray Romel"
+                    autocomplete="name"
+                >
+            </div>
+
+
+            <label>
+                Email
+            </label>
+
+            <input
+                type="email"
+                id="authEmail"
+                placeholder="you@example.com"
+                autocomplete="email"
+            >
+
+
+            <label>
+                Password
+            </label>
+
+            <input
+                type="password"
+                id="authPassword"
+                placeholder="••••••••"
+                autocomplete="current-password"
+            >
+
+
+            <button
+                type="button"
+                id="authMainBtn"
+                class="auth-main-btn"
+            >
+                Login
+            </button>
+
+
+            <div class="auth-divider">
+                <span>or</span>
+            </div>
+
+
+            <button
+                type="button"
+                id="googleLoginBtn"
+                class="google-auth-btn"
+            >
+                <span class="google-g">
+                    G
+                </span>
+
+                Continue with Google
+            </button>
+
+
+            <p
+                id="authMessage"
+                class="auth-message"
+            ></p>
+
+        </div>
+    `;
+
+
+    document.body.appendChild(
+        authScreen
+    );
+
+
+    const style =
+        document.createElement(
+            "style"
+        );
+
+    style.id =
+        "authScreenStyles";
+
+
+    style.textContent = `
+        #authScreen {
+            position: fixed;
+            inset: 0;
+            z-index: 999999;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            padding: 24px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #0f172a,
+                    #111827
+                );
+
+            font-family:
+                inherit;
+        }
+
+
+        .auth-card {
+            width: 100%;
+            max-width: 390px;
+
+            padding: 34px;
+
+            border-radius: 24px;
+
+            background:
+                rgba(
+                    255,
+                    255,
+                    255,
+                    0.97
+                );
+
+            box-shadow:
+                0 25px 70px
+                rgba(
+                    0,
+                    0,
+                    0,
+                    0.35
+                );
+
+            color: #111827;
+        }
+
+
+        .auth-logo {
+            width: 58px;
+            height: 58px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            margin:
+                0 auto
+                14px;
+
+            border-radius: 18px;
+
+            font-size: 30px;
+
+            background: #eef2ff;
+        }
+
+
+        .auth-card h1 {
+            margin:
+                0 0 8px;
+
+            text-align: center;
+
+            font-size: 26px;
+        }
+
+
+        .auth-subtitle {
+            margin:
+                0 0 24px;
+
+            text-align: center;
+
+            color: #6b7280;
+
+            font-size: 14px;
+        }
+
+
+        .auth-tabs {
+            display: grid;
+            grid-template-columns:
+                1fr 1fr;
+
+            gap: 6px;
+
+            margin-bottom: 20px;
+
+            padding: 5px;
+
+            border-radius: 14px;
+
+            background: #f3f4f6;
+        }
+
+
+        .auth-tab {
+            border: 0;
+
+            padding:
+                10px 12px;
+
+            border-radius: 10px;
+
+            background:
+                transparent;
+
+            cursor: pointer;
+
+            font-weight: 700;
+
+            color: #6b7280;
+        }
+
+
+        .auth-tab.active {
+            background: white;
+
+            color: #111827;
+
+            box-shadow:
+                0 2px 8px
+                rgba(
+                    0,
+                    0,
+                    0,
+                    0.08
+                );
+        }
+
+
+        .auth-card label {
+            display: block;
+
+            margin:
+                14px 0 6px;
+
+            font-size: 13px;
+
+            font-weight: 700;
+        }
+
+
+        .auth-card input {
+            width: 100%;
+
+            box-sizing:
+                border-box;
+
+            padding:
+                13px 14px;
+
+            border:
+                1px solid #d1d5db;
+
+            border-radius:
+                12px;
+
+            outline: none;
+
+            font: inherit;
+        }
+
+
+        .auth-card input:focus {
+            border-color:
+                #6366f1;
+
+            box-shadow:
+                0 0 0 3px
+                rgba(
+                    99,
+                    102,
+                    241,
+                    0.12
+                );
+        }
+
+
+        .auth-main-btn,
+        .google-auth-btn {
+            width: 100%;
+
+            margin-top: 18px;
+
+            padding:
+                13px 16px;
+
+            border:
+                0;
+
+            border-radius:
+                12px;
+
+            cursor: pointer;
+
+            font: inherit;
+
+            font-weight: 800;
+        }
+
+
+        .auth-main-btn {
+            background:
+                #111827;
+
+            color: white;
+        }
+
+
+        .google-auth-btn {
+            margin-top: 0;
+
+            border:
+                1px solid #d1d5db;
+
+            background: white;
+
+            color: #111827;
+        }
+
+
+        .google-g {
+            margin-right: 8px;
+
+            font-weight: 900;
+
+            color: #4285f4;
+        }
+
+
+        .auth-divider {
+            display: flex;
+            align-items: center;
+
+            gap: 12px;
+
+            margin:
+                18px 0;
+
+            color: #9ca3af;
+
+            font-size: 12px;
+        }
+
+
+        .auth-divider::before,
+        .auth-divider::after {
+            content: "";
+
+            flex: 1;
+
+            height: 1px;
+
+            background: #e5e7eb;
+        }
+
+
+        .auth-message {
+            min-height: 18px;
+
+            margin:
+                14px 0 0;
+
+            text-align: center;
+
+            font-size: 13px;
+
+            color: #dc2626;
+        }
+
+
+        @media (
+            max-width: 520px
+        ) {
+
+            #authScreen {
+                padding: 14px;
+            }
+
+
+            .auth-card {
+                padding:
+                    26px 20px;
+
+                border-radius:
+                    20px;
+            }
+        }
+    `;
+
+
+    document.head.appendChild(
+        style
+    );
+}
+
+
+function setAuthMessage(
+    message,
+    success = false
+) {
+
+    const element =
+        $("authMessage");
+
+    if (!element) {
+        return;
+    }
+
+
+    element.textContent =
+        message;
+
+
+    element.style.color =
+        success
+            ? "#16a34a"
+            : "#dc2626";
+}
+
+
+function setAuthMode(
+    mode
+) {
+
+    const isRegister =
+        mode ===
+        "register";
+
+
+    $("registerNameWrap").style.display =
+        isRegister
+            ? "block"
+            : "none";
+
+
+    $("authMainBtn").textContent =
+        isRegister
+            ? "Create Account"
+            : "Login";
+
+
+    $("showLoginBtn")
+        .classList
+        .toggle(
+            "active",
+            !isRegister
+        );
+
+
+    $("showRegisterBtn")
+        .classList
+        .toggle(
+            "active",
+            isRegister
+        );
+
+
+    $("authPassword").autocomplete =
+        isRegister
+            ? "new-password"
+            : "current-password";
+
+
+    $("authScreen").dataset.mode =
+        mode;
+
+
+    setAuthMessage("");
+}
+
+
+function firebaseAuthErrorMessage(
+    error
+) {
+
+    const code =
+        error?.code || "";
+
+
+    const messages = {
+
+        "auth/invalid-email":
+            "Invalid email address.",
+
+        "auth/missing-password":
+            "Please enter your password.",
+
+        "auth/weak-password":
+            "Password must be at least 6 characters.",
+
+        "auth/email-already-in-use":
+            "That email already has an account.",
+
+        "auth/invalid-credential":
+            "Wrong email or password.",
+
+        "auth/user-not-found":
+            "Account not found.",
+
+        "auth/wrong-password":
+            "Wrong email or password.",
+
+        "auth/popup-closed-by-user":
+            "Google sign-in was cancelled.",
+
+        "auth/popup-blocked":
+            "Please allow pop-ups for Google sign-in.",
+
+        "auth/network-request-failed":
+            "Network error. Check your internet connection."
+
+    };
+
+
+    return (
+        messages[code] ||
+        error?.message ||
+        "Authentication failed."
+    );
+}
+
+
+async function handleEmailAuth() {
+
+    const mode =
+        $("authScreen")
+            ?.dataset
+            ?.mode ||
+        "login";
+
+
+    const email =
+        $("authEmail")
+            .value
+            .trim();
+
+
+    const password =
+        $("authPassword")
+            .value;
+
+
+    const button =
+        $("authMainBtn");
+
+
+    if (
+        !email ||
+        !password
+    ) {
+
+        setAuthMessage(
+            "Enter your email and password."
+        );
+
+        return;
+    }
+
+
+    button.disabled =
+        true;
+
+
+    button.textContent =
+        mode === "register"
+            ? "Creating..."
+            : "Logging in...";
+
+
+    try {
+
+        if (
+            mode ===
+            "register"
+        ) {
+
+            const credential =
+                await createUserWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
+
+
+            const name =
+                $("authName")
+                    .value
+                    .trim();
+
+
+            if (name) {
+
+                await updateProfile(
+                    credential.user,
+                    {
+                        displayName:
+                            name
+                    }
+                );
+            }
+
+
+        } else {
+
+            await signInWithEmailAndPassword(
+                auth,
+                email,
+                password
+            );
+        }
+
+
+    } catch (error) {
+
+        console.error(
+            "Authentication error:",
+            error
+        );
+
+
+        setAuthMessage(
+            firebaseAuthErrorMessage(
+                error
+            )
+        );
+
+
+        button.disabled =
+            false;
+
+
+        button.textContent =
+            mode === "register"
+                ? "Create Account"
+                : "Login";
+    }
+}
+
+
+async function handleGoogleLogin() {
+
+    const button =
+        $("googleLoginBtn");
+
+
+    button.disabled =
+        true;
+
+
+    button.textContent =
+        "Opening Google...";
+
+
+    try {
+
+        await signInWithPopup(
+            auth,
+            googleProvider
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            "Google sign-in error:",
+            error
+        );
+
+
+        setAuthMessage(
+            firebaseAuthErrorMessage(
+                error
+            )
+        );
+
+
+        button.disabled =
+            false;
+
+
+        button.innerHTML = `
+            <span class="google-g">
+                G
+            </span>
+            Continue with Google
+        `;
+    }
+}
+
+
+function bindAuthEvents() {
+
+    $("showLoginBtn")
+        .addEventListener(
+            "click",
+            () => {
+                setAuthMode(
+                    "login"
+                );
+            }
+        );
+
+
+    $("showRegisterBtn")
+        .addEventListener(
+            "click",
+            () => {
+                setAuthMode(
+                    "register"
+                );
+            }
+        );
+
+
+    $("authMainBtn")
+        .addEventListener(
+            "click",
+            handleEmailAuth
+        );
+
+
+    $("googleLoginBtn")
+        .addEventListener(
+            "click",
+            handleGoogleLogin
+        );
+
+
+    $("authPassword")
+        .addEventListener(
+            "keydown",
+            (event) => {
+
+                if (
+                    event.key ===
+                    "Enter"
+                ) {
+
+                    handleEmailAuth();
+                }
+            }
+        );
+}
+
+
+/* =========================================================
+   AUTH START
+========================================================= */
+
+createAuthScreen();
+bindAuthEvents();
+setAuthMode(
+    "login"
+);
+
+
+onAuthStateChanged(
+    auth,
+
+    async (
+        user
+    ) => {
+
+        if (!user) {
+
+            $("authScreen")
+                .style
+                .display =
+                "flex";
+
+            return;
+        }
+
+
+        $("authScreen")
+            .style
+            .display =
+            "none";
+
+
+        try {
+
+            /*
+                First login:
+                copy old shared budget to this
+                user's private Firebase path.
+
+                Later logins:
+                it simply loads the existing
+                personal budget.
+            */
+            budgetDoc =
+                await migrateLegacyBudgetIfNeeded(
+                    user
+                );
+
+
+            console.log(
+                "Signed in as:",
+                user.displayName ||
+                user.email
+            );
+
+
+            console.log(
+                "Using personal budget:",
+                `users/${user.uid}/budgetTracker/main`
+            );
+
+
+            await startApp();
+
+
+        } catch (error) {
+
+            console.error(
+                "Budget Tracker failed to start:",
+                error
+            );
+
+
+            if (
+                $("syncStatus")
+            ) {
+
+                $("syncStatus")
+                    .textContent =
+                    "⚠ App startup error";
+            }
+        }
+    }
+);
+
+/* =========================================================
+   MONTHLY REPORT
+========================================================= */
+
+function getCurrentMonthValue() {
+
+    const selectedDate =
+        $("dashboardDate")?.value ||
+        getToday();
+
+    return selectedDate.slice(
+        0,
+        7
+    );
+}
+
+
+function monthNameFromValue(
+    monthValue
+) {
+
+    if (!monthValue) {
+        return "";
+    }
+
+    const [
+        year,
+        month
+    ] =
+        monthValue
+            .split("-")
+            .map(Number);
+
+
+    return new Date(
+        year,
+        month - 1,
+        1
+    ).toLocaleDateString(
+        "en-PH",
+        {
+            month: "long",
+            year: "numeric"
+        }
+    );
+}
+
+
+/* =========================================================
+   MONTH TRANSACTIONS
+========================================================= */
+
+function transactionsForMonth(
+    monthValue
+) {
+
+    return transactions
+        .filter(
+            (transaction) =>
+                String(
+                    transaction.date || ""
+                ).startsWith(
+                    monthValue
+                )
+        )
+        .sort(
+            (a, b) => {
+
+                if (
+                    a.date ===
+                    b.date
+                ) {
+
+                    return (
+                        Number(a.id) -
+                        Number(b.id)
+                    );
+                }
+
+                return a.date
+                    .localeCompare(
+                        b.date
+                    );
+            }
+        );
+}
+
+
+/* =========================================================
+   MONTH CATEGORY TOTAL
+========================================================= */
+
+function monthCategorySpent(
+    monthTransactions,
+    category
+) {
+
+    return monthTransactions
+        .filter(
+            (transaction) =>
+                transaction.category ===
+                category
+        )
+        .reduce(
+            (total, transaction) =>
+                total +
+                (
+                    Number(
+                        transaction.amount
+                    ) || 0
+                ),
+            0
+        );
+}
+
+
+/* =========================================================
+   MONTH PAYMENT TOTAL
+========================================================= */
+
+function monthPaymentSpent(
+    monthTransactions,
+    payment
+) {
+
+    return monthTransactions
+        .filter(
+            (transaction) =>
+                transaction.payment ===
+                payment
+        )
+        .reduce(
+            (total, transaction) =>
+                total +
+                (
+                    Number(
+                        transaction.amount
+                    ) || 0
+                ),
+            0
+        );
+}
+
+
+/* =========================================================
+   MONTHLY REPORT DATA
+========================================================= */
+function savingsVaultForMonth(
+    monthValue
+) {
+
+    const entries =
+        savingsVaultEntries
+            .filter(
+                (entry) =>
+                    String(
+                        entry.date || ""
+                    ).startsWith(
+                        `${monthValue}-`
+                    )
+            );
+
+
+    let deposited = 0;
+    let withdrawn = 0;
+
+
+    entries.forEach(
+        (entry) => {
+
+            const amount =
+                Number(
+                    entry.amount
+                ) || 0;
+
+
+            if (
+                entry.type ===
+                "deposit"
+            ) {
+
+                deposited += amount;
+            }
+
+
+            if (
+                entry.type ===
+                "withdraw"
+            ) {
+
+                withdrawn += amount;
+            }
+        }
+    );
+
+
+    return {
+
+        deposited,
+
+        withdrawn,
+
+        net:
+            deposited -
+            withdrawn
+    };
+}
+
+function getMonthlyReportData(
+    monthValue
+) {
+
+    const monthTransactions =
+        transactionsForMonth(
+            monthValue
+        );
+
+
+    const totalSpent =
+        monthTransactions
+            .reduce(
+                (
+                    total,
+                    transaction
+                ) =>
+                    total +
+                    (
+                        Number(
+                            transaction.amount
+                        ) || 0
+                    ),
+                0
+            );
+
+
+    const needsSpent =
+        monthCategorySpent(
+            monthTransactions,
+            "Needs"
+        );
+
+
+    const wantsSpent =
+        monthCategorySpent(
+            monthTransactions,
+            "Wants"
+        );
+
+
+    const savingsMonth =
+        savingsVaultForMonth(
+            monthValue
+        );
+
+
+    const savingsSaved =
+        savingsMonth.net;
+
+
+    const vaultBalance =
+        getSavingsVaultBalance();
+
+
+    const cashSpent =
+        monthPaymentSpent(
+            monthTransactions,
+            "Cash"
+        );
+
+
+    const cardSpent =
+        monthPaymentSpent(
+            monthTransactions,
+            "Card"
+        );
+
+
+    const beepSpent =
+        monthPaymentSpent(
+            monthTransactions,
+            "Beep"
+        );
+
+
+    const totalRemaining =
+        categoryRemaining(
+            "Needs"
+        ) +
+        categoryRemaining(
+            "Wants"
+        );
+
+
+    return {
+
+        monthValue,
+
+        monthName:
+            monthNameFromValue(
+                monthValue
+            ),
+
+        transactions:
+            monthTransactions,
+
+        totalSpent,
+
+        totalRemaining,
+
+        needsSpent,
+
+        wantsSpent,
+
+        savingsSaved,
+
+        vaultBalance,
+
+        cashSpent,
+
+        cardSpent,
+
+        beepSpent
+    };
+}
+
+
+/* =========================================================
+   GROUP MONTH TRANSACTIONS
+========================================================= */
+
+function groupTransactionsByDate(
+    monthTransactions
+) {
+
+    const groups = {};
+
+
+    monthTransactions.forEach(
+        (transaction) => {
+
+            const date =
+                transaction.date;
+
+
+            if (!groups[date]) {
+
+                groups[date] =
+                    [];
+            }
+
+
+            groups[date].push(
+                transaction
+            );
+        }
+    );
+
+
+    return groups;
+}
+
+
+/* =========================================================
+   FRIENDLY REPORT DATE
+========================================================= */
+
+function reportDateLabel(
+    dateString
+) {
+
+    const date =
+        new Date(
+            `${dateString}T00:00:00`
+        );
+
+
+    return date
+        .toLocaleDateString(
+            "en-PH",
+            {
+                weekday:
+                    "short",
+
+                month:
+                    "short",
+
+                day:
+                    "numeric"
+            }
+        );
+}
+
+
+/* =========================================================
+   MONTHLY REPORT HTML
+========================================================= */
+
+function buildMonthlyReportHtml(
+    monthValue
+) {
+
+    const report =
+        getMonthlyReportData(
+            monthValue
+        );
+
+
+    const grouped =
+        groupTransactionsByDate(
+            report.transactions
+        );
+
+
+    const dates =
+        Object
+            .keys(grouped)
+            .sort();
+
+
+    let historyHtml = "";
+
+
+    if (
+        dates.length ===
+        0
+    ) {
+
+        historyHtml = `
+            <div class="report-empty">
+                No transactions recorded
+                for this month.
+            </div>
+        `;
+
+    } else {
+
+        dates.forEach(
+            (date) => {
+
+                const dailyTransactions =
+                    grouped[date];
+
+
+                const dailyTotal =
+                    dailyTransactions
+                        .reduce(
+                            (
+                                total,
+                                transaction
+                            ) =>
+                                total +
+                                (
+                                    Number(
+                                        transaction.amount
+                                    ) || 0
+                                ),
+                            0
+                        );
+
+
+                const rows =
+                    dailyTransactions
+                        .map(
+                            (transaction) => `
+                                <div class="report-transaction">
+
+                                    <div class="report-transaction-info">
+
+                                        <strong>
+                                            ${escapeHtml(
+                                                transaction.description
+                                            )}
+                                        </strong>
+
+                                        <span>
+                                            ${escapeHtml(
+                                                transaction.category ||
+                                                "Uncategorized"
+                                            )}
+
+                                            •
+
+                                            ${escapeHtml(
+                                                transaction.payment ||
+                                                "Unknown"
+                                            )}
+                                        </span>
+
+                                    </div>
+
+                                    <strong>
+                                        ${money(
+                                            transaction.amount
+                                        )}
+                                    </strong>
+
+                                </div>
+                            `
+                        )
+                        .join(
+                            ""
+                        );
+
+
+                historyHtml += `
+                    <section class="report-day">
+
+                        <div class="report-day-heading">
+
+                            <strong>
+                                ${reportDateLabel(
+                                    date
+                                )}
+                            </strong>
+
+                            <span>
+                                ${money(
+                                    dailyTotal
+                                )}
+                            </span>
+
+                        </div>
+
+                        ${rows}
+
+                    </section>
+                `;
+            }
+        );
+    }
+
+
+    return `
+        <div class="monthly-report-content">
+
+            <div class="report-title">
+
+                <div>
+                    <span class="report-eyebrow">
+                        BUDGET TRACKER
+                    </span>
+
+                    <h1>
+                        Monthly Report
+                    </h1>
+
+                    <p>
+                        ${escapeHtml(
+                            report.monthName
+                        )}
+                    </p>
+                </div>
+
+                <div class="report-logo">
+                    ₱
+                </div>
+
+            </div>
+
+
+            <div class="report-main-summary">
+
+                <div class="report-big-stat">
+
+                    <span>
+                        OVERALL SPENT
+                    </span>
+
+                    <strong>
+                        ${money(
+                            report.totalSpent
+                        )}
+                    </strong>
+
+                </div>
+
+
+                <div class="report-big-stat">
+
+                    <span>
+                        OVERALL REMAINING
+                    </span>
+
+                    <strong>
+                        ${money(
+                            report.totalRemaining
+                        )}
+                    </strong>
+
+                </div>
+
+            </div>
+
+
+            <div class="report-category-grid">
+
+                <div>
+                    <span>
+                        🛒 Needs
+                    </span>
+
+                    <strong>
+                        ${money(
+                            report.needsSpent
+                        )}
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        🎮 Wants
+                    </span>
+
+                    <strong>
+                        ${money(
+                            report.wantsSpent
+                        )}
+                    </strong>
+                </div>
+
+
+                <div>
+                    <span>
+                        🏦 Savings
+                    </span>
+
+                    <strong>
+                        ${money(
+                            report.savingsSaved
+                        )}
+                    </strong>
+                </div>
+
+            </div>
+
+
+            <div class="report-payment-section">
+
+                <h2>
+                    Payment Breakdown
+                </h2>
+
+                <div class="report-payment-grid">
+
+                    <div>
+                        <span>
+                            💵 Cash
+                        </span>
+
+                        <strong>
+                            ${money(
+                                report.cashSpent
+                            )}
+                        </strong>
+                    </div>
+
+
+                    <div>
+                        <span>
+                            💳 Card
+                        </span>
+
+                        <strong>
+                            ${money(
+                                report.cardSpent
+                            )}
+                        </strong>
+                    </div>
+
+
+                    <div>
+                        <span>
+                            🚆 Beep
+                        </span>
+
+                        <strong>
+                            ${money(
+                                report.beepSpent
+                            )}
+                        </strong>
+                    </div>
+
+                </div>
+
+            </div>
+
+
+            <div class="report-history">
+
+                <h2>
+                    Transaction History
+                </h2>
+
+                ${historyHtml}
+
+            </div>
+
+
+            <div class="report-footer">
+
+                Generated from Budget Tracker
+
+            </div>
+
+        </div>
+    `;
+}
+
+
+/* =========================================================
+   REPORT STYLES
+========================================================= */
+
+function getMonthlyReportStyles() {
+
+    return `
+        * {
+            box-sizing:
+                border-box;
+        }
+
+
+        body {
+
+            margin:
+                0;
+
+            padding:
+                40px;
+
+            background:
+                #f3f4f6;
+
+            color:
+                #16181d;
+
+            font-family:
+                Arial,
+                Helvetica,
+                sans-serif;
+        }
+
+
+        .monthly-report-content {
+
+            width:
+                min(
+                    850px,
+                    100%
+                );
+
+            margin:
+                0 auto;
+
+            padding:
+                42px;
+
+            background:
+                white;
+
+            border-radius:
+                22px;
+
+            box-shadow:
+                0 15px 50px
+                rgba(
+                    0,
+                    0,
+                    0,
+                    .08
+                );
+        }
+
+
+        .report-title {
+
+            display:
+                flex;
+
+            justify-content:
+                space-between;
+
+            align-items:
+                center;
+
+            gap:
+                20px;
+
+            padding-bottom:
+                28px;
+
+            border-bottom:
+                1px solid
+                #e4e6ea;
+        }
+
+
+        .report-title h1 {
+
+            margin:
+                4px 0;
+
+            font-size:
+                34px;
+        }
+
+
+        .report-title p {
+
+            margin:
+                0;
+
+            color:
+                #747b86;
+        }
+
+
+        .report-eyebrow {
+
+            color:
+                #9197a1;
+
+            font-size:
+                11px;
+
+            font-weight:
+                800;
+
+            letter-spacing:
+                .15em;
+        }
+
+
+        .report-logo {
+
+            display:
+                grid;
+
+            place-items:
+                center;
+
+            width:
+                58px;
+
+            height:
+                58px;
+
+            border-radius:
+                17px;
+
+            background:
+                #202329;
+
+            color:
+                white;
+
+            font-size:
+                30px;
+
+            font-weight:
+                900;
+        }
+
+
+        .report-main-summary {
+
+            display:
+                grid;
+
+            grid-template-columns:
+                repeat(
+                    2,
+                    1fr
+                );
+
+            gap:
+                14px;
+
+            margin-top:
+                26px;
+        }
+
+
+        .report-big-stat {
+
+            padding:
+                22px;
+
+            border:
+                1px solid
+                #dde0e5;
+
+            border-radius:
+                16px;
+
+            background:
+                #f8f9fa;
+        }
+
+
+        .report-big-stat span {
+
+            display:
+                block;
+
+            margin-bottom:
+                6px;
+
+            color:
+                #848b95;
+
+            font-size:
+                10px;
+
+            font-weight:
+                800;
+
+            letter-spacing:
+                .1em;
+        }
+
+
+        .report-big-stat strong {
+
+            font-size:
+                28px;
+        }
+
+
+        .report-category-grid,
+        .report-payment-grid {
+
+            display:
+                grid;
+
+            grid-template-columns:
+                repeat(
+                    3,
+                    1fr
+                );
+
+            gap:
+                12px;
+
+            margin-top:
+                14px;
+        }
+
+
+        .report-category-grid > div,
+        .report-payment-grid > div {
+
+            padding:
+                16px;
+
+            border:
+                1px solid
+                #e2e4e8;
+
+            border-radius:
+                14px;
+        }
+
+
+        .report-category-grid span,
+        .report-payment-grid span {
+
+            display:
+                block;
+
+            color:
+                #777e88;
+
+            font-size:
+                12px;
+        }
+
+
+        .report-category-grid strong,
+        .report-payment-grid strong {
+
+            display:
+                block;
+
+            margin-top:
+                6px;
+
+            font-size:
+                17px;
+        }
+
+
+        .report-payment-section,
+        .report-history {
+
+            margin-top:
+                32px;
+        }
+
+
+        .report-payment-section h2,
+        .report-history h2 {
+
+            margin:
+                0 0 12px;
+
+            font-size:
+                17px;
+        }
+
+
+        .report-day {
+
+            overflow:
+                hidden;
+
+            margin-bottom:
+                12px;
+
+            border:
+                1px solid
+                #e2e4e8;
+
+            border-radius:
+                14px;
+        }
+
+
+        .report-day-heading {
+
+            display:
+                flex;
+
+            justify-content:
+                space-between;
+
+            align-items:
+                center;
+
+            gap:
+                12px;
+
+            padding:
+                11px 14px;
+
+            background:
+                #f2f3f5;
+
+            font-size:
+                12px;
+        }
+
+
+        .report-transaction {
+
+            display:
+                flex;
+
+            justify-content:
+                space-between;
+
+            align-items:
+                center;
+
+            gap:
+                18px;
+
+            padding:
+                12px 14px;
+
+            border-top:
+                1px solid
+                #eeeeef;
+
+            font-size:
+                12px;
+        }
+
+
+        .report-transaction-info {
+
+            min-width:
+                0;
+        }
+
+
+        .report-transaction-info strong {
+
+            display:
+                block;
+        }
+
+
+        .report-transaction-info span {
+
+            display:
+                block;
+
+            margin-top:
+                3px;
+
+            color:
+                #858b94;
+
+            font-size:
+                10px;
+        }
+
+
+        .report-empty {
+
+            padding:
+                28px;
+
+            border:
+                1px dashed
+                #d6d9de;
+
+            border-radius:
+                14px;
+
+            text-align:
+                center;
+
+            color:
+                #858b94;
+        }
+
+
+        .report-footer {
+
+            margin-top:
+                32px;
+
+            padding-top:
+                16px;
+
+            border-top:
+                1px solid
+                #e5e7eb;
+
+            text-align:
+                center;
+
+            color:
+                #9a9fa8;
+
+            font-size:
+                9px;
+        }
+
+
+        @media print {
+
+            body {
+
+                padding:
+                    0;
+
+                background:
+                    white;
+            }
+
+
+            .monthly-report-content {
+
+                width:
+                    100%;
+
+                padding:
+                    20px;
+
+                box-shadow:
+                    none;
+
+                border-radius:
+                    0;
+            }
+
+
+            .report-day {
+
+                break-inside:
+                    avoid;
+            }
+        }
+
+
+        @media (
+            max-width:
+            600px
+        ) {
+
+            body {
+
+                padding:
+                    15px;
+            }
+
+
+            .monthly-report-content {
+
+                padding:
+                    22px;
+            }
+
+
+            .report-main-summary,
+            .report-category-grid,
+            .report-payment-grid {
+
+                grid-template-columns:
+                    1fr;
+            }
+        }
+    `;
+}
+
+
+/* =========================================================
+   OPEN REPORT
+========================================================= */
+
+function openMonthlyReport(
+    monthValue
+) {
+
+    try {
+
+        const reportHtml =
+            buildMonthlyReportHtml(
+                monthValue
+            );
+
+
+        const fullHtml = `
+            <!DOCTYPE html>
+
+            <html lang="en">
+
+            <head>
+
+                <meta charset="UTF-8">
+
+                <meta
+                    name="viewport"
+                    content="width=device-width, initial-scale=1.0"
+                >
+
+                <title>
+                    Budget Report -
+                    ${escapeHtml(
+                        monthNameFromValue(
+                            monthValue
+                        )
+                    )}
+                </title>
+
+                <style>
+                    ${getMonthlyReportStyles()}
+                </style>
+
+            </head>
+
+            <body>
+
+                ${reportHtml}
+
+                <script>
+                    function printReport() {
+                        window.print();
+                    }
+                <\/script>
+
+            </body>
+
+            </html>
+        `;
+
+
+        const blob =
+            new Blob(
+                [fullHtml],
+                {
+                    type:
+                        "text/html"
+                }
+            );
+
+
+        const reportUrl =
+            URL.createObjectURL(
+                blob
+            );
+
+
+        const popup =
+            window.open(
+                reportUrl,
+                "_blank"
+            );
+
+
+        if (!popup) {
+
+            URL.revokeObjectURL(
+                reportUrl
+            );
+
+            alert(
+                "Please allow pop-ups so the monthly report can open."
+            );
+
+            return;
+        }
+
+
+        setTimeout(
+            () => {
+
+                URL.revokeObjectURL(
+                    reportUrl
+                );
+
+            },
+            60000
+        );
+
+
+    } catch (error) {
+
+        console.error(
+            "Monthly Report Error:",
+            error
+        );
+
+
+        alert(
+            "Monthly Report failed to generate.\n\n" +
+            error.message
+        );
+    }
+}
+
+/* =========================================================
+   MONTHLY REPORT MODAL
+========================================================= */
+
+function createMonthlyReportModal() {
+
+    if (
+        $("monthlyReportBackdrop")
+    ) {
+
+        return;
+    }
+
+
+    const backdrop =
+        document.createElement(
+            "div"
+        );
+
+
+    backdrop.id =
+        "monthlyReportBackdrop";
+
+
+    backdrop.style.cssText = `
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: none;
+        place-items: center;
+        padding: 18px;
+        background: rgba(5,7,10,.78);
+    `;
+
+
+    backdrop.innerHTML = `
+        <section
+            style="
+                width:min(470px,100%);
+                padding:20px;
+                border:1px solid #3a4049;
+                border-radius:16px;
+                background:#23272d;
+                color:#f4f5f7;
+                box-shadow:
+                    0 24px 60px
+                    rgba(0,0,0,.45);
+            "
+        >
+
+            <div
+                style="
+                    display:flex;
+                    justify-content:
+                        space-between;
+                    align-items:center;
+                    gap:12px;
+                    margin-bottom:16px;
+                "
+            >
+
+                <div>
+
+                    <div
+                        style="
+                            color:#7f8791;
+                            font-size:10px;
+                            font-weight:800;
+                            letter-spacing:.1em;
+                        "
+                    >
+                        REPORTS
+                    </div>
+
+                    <h3
+                        style="
+                            margin:
+                                3px 0 0;
+                        "
+                    >
+                        📊 Monthly Report
+                    </h3>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    id="closeMonthlyReportBtn"
+                    style="
+                        width:34px;
+                        height:34px;
+                        border:
+                            1px solid
+                            #3a4049;
+                        border-radius:9px;
+                        background:#353b44;
+                        color:white;
+                        cursor:pointer;
+                    "
+                >
+                    ✕
+                </button>
+
+            </div>
+
+
+            <label
+                for="monthlyReportMonth"
+                style="
+                    display:block;
+                    margin-bottom:6px;
+                    color:#aab0b9;
+                    font-size:12px;
+                    font-weight:700;
+                "
+            >
+                Choose Month
+            </label>
+
+
+            <input
+                type="month"
+                id="monthlyReportMonth"
+                style="
+                    width:100%;
+                    padding:10px 12px;
+                    border:
+                        1px solid
+                        #3a4049;
+                    border-radius:10px;
+                    background:#1d2025;
+                    color:#f4f5f7;
+                    color-scheme:dark;
+                "
+            >
+
+
+            <div
+                id="monthlyReportPreview"
+                style="
+                    display:grid;
+                    grid-template-columns:
+                        repeat(2,1fr);
+                    gap:10px;
+                    margin-top:14px;
+                "
+            >
+            </div>
+
+
+            <button
+                type="button"
+                id="generateMonthlyReportBtn"
+                style="
+                    width:100%;
+                    margin-top:16px;
+                    padding:11px 14px;
+                    border:
+                        1px solid
+                        #3a4049;
+                    border-radius:10px;
+                    background:#353b44;
+                    color:white;
+                    font-weight:800;
+                    cursor:pointer;
+                "
+            >
+                📄 Open Report
+            </button>
+
+
+            <p
+                style="
+                    margin:
+                        10px 0 0;
+                    color:#7f8791;
+                    font-size:10px;
+                    line-height:1.5;
+                "
+            >
+                The report opens in a clean
+                printable page. Choose
+                <b>Print → Save as PDF</b>
+                to download it.
+            </p>
+
+        </section>
+    `;
+
+
+    document.body
+        .appendChild(
+            backdrop
+        );
+
+
+    backdrop.addEventListener(
+        "click",
+        (event) => {
+
+            if (
+                event.target ===
+                backdrop
+            ) {
+
+                closeMonthlyReportModal();
+            }
+        }
+    );
+
+
+    $("closeMonthlyReportBtn")
+        ?.addEventListener(
+            "click",
+            closeMonthlyReportModal
+        );
+
+
+    $("monthlyReportMonth")
+        ?.addEventListener(
+            "change",
+            updateMonthlyReportPreview
+        );
+
+
+    $("generateMonthlyReportBtn")
+        ?.addEventListener(
+            "click",
+            () => {
+
+                const monthValue =
+                    $("monthlyReportMonth")
+                        ?.value;
+
+
+                if (!monthValue) {
+
+                    alert(
+                        "Choose a month first."
+                    );
+
+                    return;
+                }
+
+
+                openMonthlyReport(
+                    monthValue
+                );
+            }
+        );
+}
+
+
+/* =========================================================
+   REPORT PREVIEW
+========================================================= */
+
+function updateMonthlyReportPreview() {
+
+    const preview =
+        $("monthlyReportPreview");
+
+
+    const monthValue =
+        $("monthlyReportMonth")
+            ?.value;
+
+
+    if (
+        !preview ||
+        !monthValue
+    ) {
+
+        return;
+    }
+
+
+    const report =
+        getMonthlyReportData(
+            monthValue
+        );
+
+
+    preview.innerHTML = `
+
+        <div
+            style="
+                padding:12px;
+                border:
+                    1px solid
+                    #3a4049;
+                border-radius:11px;
+                background:#2d3239;
+            "
+        >
+
+            <span
+                style="
+                    display:block;
+                    color:#7f8791;
+                    font-size:9px;
+                    font-weight:800;
+                "
+            >
+                SPENT
+            </span>
+
+            <strong
+                style="
+                    display:block;
+                    margin-top:4px;
+                    font-size:18px;
+                "
+            >
+                ${money(
+                    report.totalSpent
+                )}
+            </strong>
+
+        </div>
+
+
+        <div
+            style="
+                padding:12px;
+                border:
+                    1px solid
+                    #3a4049;
+                border-radius:11px;
+                background:#2d3239;
+            "
+        >
+
+            <span
+                style="
+                    display:block;
+                    color:#7f8791;
+                    font-size:9px;
+                    font-weight:800;
+                "
+            >
+                TRANSACTIONS
+            </span>
+
+            <strong
+                style="
+                    display:block;
+                    margin-top:4px;
+                    font-size:18px;
+                "
+            >
+                ${
+                    report.transactions
+                        .length
+                }
+            </strong>
+
+        </div>
+
+    `;
+}
+
+
+/* =========================================================
+   OPEN/CLOSE MONTH REPORT MODAL
+========================================================= */
+
+function showMonthlyReportModal() {
+
+    createMonthlyReportModal();
+
+
+    const backdrop =
+        $("monthlyReportBackdrop");
+
+
+    if (!backdrop) {
+        return;
+    }
+
+
+    const monthInput =
+        $("monthlyReportMonth");
+
+
+    if (monthInput) {
+
+        monthInput.value =
+            getCurrentMonthValue();
+    }
+
+
+    updateMonthlyReportPreview();
+
+
+    backdrop.style.display =
+        "grid";
+}
+
+
+function closeMonthlyReportModal() {
+
+    const backdrop =
+        $("monthlyReportBackdrop");
+
+
+    if (backdrop) {
+
+        backdrop.style.display =
+            "none";
+    }
+}
+
+
+/* =========================================================
+   INSTALL MONTHLY REPORT BUTTON
+========================================================= */
+
+function installMonthlyReportFeature() {
+
+    const nav =
+        document.querySelector(
+            ".side-nav"
+        );
+
+
+    if (
+        !nav ||
+        $("monthlyReportNavBtn")
+    ) {
+
+        return;
+    }
+
+
+    const button =
+        document.createElement(
+            "button"
+        );
+
+
+    button.type =
+        "button";
+
+
+    button.id =
+        "monthlyReportNavBtn";
+
+
+    button.className =
+        "nav-btn";
+
+
+    button.innerHTML =
+        "📊 <span>Monthly Report</span>";
+
+
+    button.addEventListener(
+        "click",
+        showMonthlyReportModal
+    );
+
+
+    nav.appendChild(
+        button
+    );
+
+
+    createMonthlyReportModal();
+}
+
+
+/* =========================================================
+   START MONTHLY REPORT FEATURE
+========================================================= */
+
+installMonthlyReportFeature();
+
+/* =========================================================
+   SAVINGS VAULT
+========================================================= */
+
+function getSavingsVaultBalance() {
+
+    return savingsVaultEntries
+        .reduce(
+            (
+                total,
+                entry
+            ) => {
+
+                const amount =
+                    Number(
+                        entry.amount
+                    ) || 0;
+
+
+                if (
+                    entry.type ===
+                    "deposit"
+                ) {
+
+                    return (
+                        total +
+                        amount
+                    );
+                }
+
+
+                if (
+                    entry.type ===
+                    "withdraw"
+                ) {
+
+                    return (
+                        total -
+                        amount
+                    );
+                }
+
+
+                return total;
+            },
+            0
+        );
+}
+
+
+/* =========================================================
+   SAVINGS LEVEL
+========================================================= */
+
+function getSavingsLevelData() {
+
+    const balance =
+        Math.max(
+            0,
+            getSavingsVaultBalance()
+        );
+
+
+    const step =
+        1000;
+
+
+    const level =
+        Math.floor(
+            balance /
+            step
+        );
+
+
+    const currentFloor =
+        level *
+        step;
+
+
+    const nextTarget =
+        (
+            level +
+            1
+        ) *
+        step;
+
+
+    const progressAmount =
+        balance -
+        currentFloor;
+
+
+    const progress =
+        Math.max(
+            0,
+            Math.min(
+                100,
+                (
+                    progressAmount /
+                    step
+                ) * 100
+            )
+        );
+
+
+    return {
+
+        balance,
+
+        level,
+
+        nextLevel:
+            level + 1,
+
+        nextTarget,
+
+        progress
+    };
+}
+
+
+/* =========================================================
+   VAULT DATE
+========================================================= */
+
+function savingsEntryDateLabel(
+    date
+) {
+
+    if (!date) {
+        return "";
+    }
+
+
+    return new Date(
+        `${date}T00:00:00`
+    ).toLocaleDateString(
+        "en-PH",
+        {
+            month:
+                "short",
+
+            day:
+                "numeric",
+
+            year:
+                "numeric"
+        }
+    );
+}
+
+
+/* =========================================================
+   SAVINGS HISTORY
+========================================================= */
+
+function renderSavingsVaultHistory() {
+
+    const list =
+        $("savingsVaultHistory");
+
+
+    if (!list) {
+        return;
+    }
+
+
+    list.innerHTML =
+        "";
+
+
+    if (
+        savingsVaultEntries.length ===
+        0
+    ) {
+
+        list.innerHTML = `
+            <div
+                style="
+                    padding:20px 4px;
+                    text-align:center;
+                    color:#7f8791;
+                    font-size:11px;
+                "
+            >
+                No savings activity yet.
+            </div>
+        `;
+
+        return;
+    }
+
+
+    const sorted =
+        [
+            ...savingsVaultEntries
+        ]
+            .sort(
+                (
+                    a,
+                    b
+                ) =>
+                    Number(b.id) -
+                    Number(a.id)
+            )
+            .slice(
+                0,
+                15
+            );
+
+
+    sorted.forEach(
+        (entry) => {
+
+            const row =
+                document.createElement(
+                    "div"
+                );
+
+
+            row.style.cssText = `
+                display:grid;
+                grid-template-columns:
+                    minmax(0,1fr)
+                    auto;
+                gap:12px;
+                align-items:center;
+                padding:11px 0;
+                border-bottom:
+                    1px solid
+                    #353a42;
+            `;
+
+
+            const isDeposit =
+                entry.type ===
+                "deposit";
+
+
+            row.innerHTML = `
+
+                <div>
+
+                    <strong
+                        style="
+                            display:block;
+                            font-size:12px;
+                        "
+                    >
+                        ${
+                            isDeposit
+                                ? "📥 Savings Deposit"
+                                : "📤 Emergency Withdrawal"
+                        }
+                    </strong>
+
+                    <span
+                        style="
+                            display:block;
+                            margin-top:3px;
+                            color:#7f8791;
+                            font-size:9px;
+                        "
+                    >
+                        ${
+                            isDeposit
+                                ? "From"
+                                : "Returned to"
+                        }
+
+                        ${escapeHtml(
+                            entry.account
+                        )}
+
+                        •
+
+                        ${escapeHtml(
+                            savingsEntryDateLabel(
+                                entry.date
+                            )
+                        )}
+                    </span>
+
+                </div>
+
+
+                <strong
+                    style="
+                        font-size:12px;
+                    "
+                >
+                    ${
+                        isDeposit
+                            ? "+"
+                            : "-"
+                    }${money(
+                        entry.amount
+                    )}
+                </strong>
+            `;
+
+
+            list.appendChild(
+                row
+            );
+        }
+    );
+}
+
+
+/* =========================================================
+   UPDATE VAULT UI
+========================================================= */
+
+function updateSavingsVaultUI() {
+
+    const data =
+        getSavingsLevelData();
+
+
+    if (
+        $("savingsVaultBalance")
+    ) {
+
+        $("savingsVaultBalance")
+            .textContent =
+                money(
+                    data.balance
+                );
+    }
+
+
+    if (
+        $("savingsVaultLevel")
+    ) {
+
+        $("savingsVaultLevel")
+            .textContent =
+                `Level ${data.level}`;
+    }
+
+
+    if (
+        $("savingsVaultTarget")
+    ) {
+
+        $("savingsVaultTarget")
+            .textContent =
+                `${money(
+                    data.balance
+                )} / ${money(
+                    data.nextTarget
+                )}`;
+    }
+
+
+    if (
+        $("savingsVaultProgress")
+    ) {
+
+        $("savingsVaultProgress")
+            .style.width =
+                `${data.progress}%`;
+    }
+
+
+    if (
+        $("savingsVaultNextText")
+    ) {
+
+        const needed =
+            Math.max(
+                0,
+                data.nextTarget -
+                data.balance
+            );
+
+
+        $("savingsVaultNextText")
+            .textContent =
+                `${money(
+                    needed
+                )} until Level ${data.nextLevel}`;
+    }
+
+
+    const wallet =
+        calculateWalletBalances();
+
+
+    if (
+        $("vaultCashAvailable")
+    ) {
+
+        $("vaultCashAvailable")
+            .textContent =
+                money(
+                    wallet.Cash
+                );
+    }
+
+
+    if (
+        $("vaultCardAvailable")
+    ) {
+
+        $("vaultCardAvailable")
+            .textContent =
+                money(
+                    wallet.Card
+                );
+    }
+
+
+    renderSavingsVaultHistory();
+}
+
+
+/* =========================================================
+   DEPOSIT
+========================================================= */
+
+async function depositToSavingsVault() {
+
+    const amount =
+        Number(
+            $("savingsVaultAmount")
+                ?.value
+        );
+
+
+    const account =
+        $("savingsVaultAccount")
+            ?.value;
+
+
+    const date =
+        $("dashboardDate")
+            ?.value ||
+        getToday();
+
+
+    if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+
+        alert(
+            "Enter a valid savings amount."
+        );
+
+        return;
+    }
+
+
+    const wallet =
+        calculateWalletBalances();
+
+
+    if (
+        !account ||
+        wallet[account] ===
+            undefined
+    ) {
+
+        alert(
+            "Choose Cash or Card."
+        );
+
+        return;
+    }
+
+
+    if (
+        amount >
+        wallet[account]
+    ) {
+
+        alert(
+            `Not enough ${account} balance.\n\nAvailable: ${money(
+                wallet[account]
+            )}`
+        );
+
+        return;
+    }
+
+
+    savingsVaultEntries.push({
+
+        id:
+            uid(),
+
+        date,
+
+        type:
+            "deposit",
+
+        account,
+
+        amount
+    });
+
+
+    if (
+        $("savingsVaultAmount")
+    ) {
+
+        $("savingsVaultAmount")
+            .value =
+                "";
+    }
+
+
+    await saveData();
+
+
+    refreshAll();
+
+    updateSavingsVaultUI();
+}
+
+
+/* =========================================================
+   WITHDRAW
+========================================================= */
+
+async function withdrawFromSavingsVault() {
+
+    const amount =
+        Number(
+            $("savingsVaultAmount")
+                ?.value
+        );
+
+
+    const account =
+        $("savingsVaultAccount")
+            ?.value;
+
+
+    const date =
+        $("dashboardDate")
+            ?.value ||
+        getToday();
+
+
+    const vaultBalance =
+        getSavingsVaultBalance();
+
+
+    if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+    ) {
+
+        alert(
+            "Enter a valid withdrawal amount."
+        );
+
+        return;
+    }
+
+
+    if (
+        amount >
+        vaultBalance
+    ) {
+
+        alert(
+            `Not enough savings.\n\nVault balance: ${money(
+                vaultBalance
+            )}`
+        );
+
+        return;
+    }
+
+
+    const confirmed =
+        confirm(
+            `Withdraw ${money(
+                amount
+            )} from savings and return it to ${account}?`
+        );
+
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    savingsVaultEntries.push({
+
+        id:
+            uid(),
+
+        date,
+
+        type:
+            "withdraw",
+
+        account,
+
+        amount
+    });
+
+
+    if (
+        $("savingsVaultAmount")
+    ) {
+
+        $("savingsVaultAmount")
+            .value =
+                "";
+    }
+
+
+    await saveData();
+
+
+    refreshAll();
+
+    updateSavingsVaultUI();
+}
+
+
+/* =========================================================
+   CREATE VAULT MODAL
+========================================================= */
+
+function createSavingsVaultModal() {
+
+    if (
+        $("savingsVaultBackdrop")
+    ) {
+
+        return;
+    }
+
+
+    const backdrop =
+        document.createElement(
+            "div"
+        );
+
+
+    backdrop.id =
+        "savingsVaultBackdrop";
+
+
+    backdrop.style.cssText = `
+        position:fixed;
+        inset:0;
+        z-index:1000;
+        display:none;
+        place-items:center;
+        padding:18px;
+        background:
+            rgba(5,7,10,.78);
+    `;
+
+
+    backdrop.innerHTML = `
+
+        <section
+            style="
+                width:
+                    min(
+                        520px,
+                        100%
+                    );
+                max-height:
+                    90vh;
+                overflow-y:auto;
+                padding:20px;
+                border:
+                    1px solid
+                    #3a4049;
+                border-radius:18px;
+                background:#23272d;
+                color:#f4f5f7;
+                box-shadow:
+                    0 24px 60px
+                    rgba(
+                        0,
+                        0,
+                        0,
+                        .45
+                    );
+            "
+        >
+
+            <div
+                style="
+                    display:flex;
+                    justify-content:
+                        space-between;
+                    align-items:center;
+                    gap:12px;
+                "
+            >
+
+                <div>
+
+                    <span
+                        style="
+                            color:#7f8791;
+                            font-size:9px;
+                            font-weight:900;
+                            letter-spacing:.12em;
+                        "
+                    >
+                        SAVINGS VAULT
+                    </span>
+
+                    <h3
+                        style="
+                            margin:4px 0 0;
+                        "
+                    >
+                        🏦 My Savings
+                    </h3>
+
+                </div>
+
+
+                <button
+                    type="button"
+                    id="closeSavingsVaultBtn"
+                    style="
+                        width:34px;
+                        height:34px;
+                        border:
+                            1px solid
+                            #3a4049;
+                        border-radius:9px;
+                        background:#353b44;
+                        color:white;
+                        cursor:pointer;
+                    "
+                >
+                    ✕
+                </button>
+
+            </div>
+
+
+            <div
+                style="
+                    margin-top:18px;
+                    padding:18px;
+                    border:
+                        1px solid
+                        #3a4049;
+                    border-radius:15px;
+                    background:#2d3239;
+                "
+            >
+
+                <span
+                    style="
+                        display:block;
+                        color:#aab0b9;
+                        font-size:10px;
+                    "
+                >
+                    SAVINGS BALANCE
+                </span>
+
+
+                <strong
+                    id="savingsVaultBalance"
+                    style="
+                        display:block;
+                        margin-top:5px;
+                        font-size:30px;
+                    "
+                >
+                    ₱0.00
+                </strong>
+
+
+                <div
+                    style="
+                        display:flex;
+                        justify-content:
+                            space-between;
+                        gap:10px;
+                        margin-top:12px;
+                    "
+                >
+
+                    <strong
+                        id="savingsVaultLevel"
+                        style="
+                            font-size:12px;
+                        "
+                    >
+                        Level 0
+                    </strong>
+
+                    <span
+                        id="savingsVaultTarget"
+                        style="
+                            color:#aab0b9;
+                            font-size:10px;
+                        "
+                    >
+                        ₱0 / ₱1,000
+                    </span>
+
+                </div>
+
+
+                <div
+                    style="
+                        overflow:hidden;
+                        width:100%;
+                        height:12px;
+                        margin-top:8px;
+                        border:
+                            1px solid
+                            #414751;
+                        border-radius:999px;
+                        background:#171a1f;
+                    "
+                >
+
+                    <div
+                        id="savingsVaultProgress"
+                        style="
+                            width:0%;
+                            height:100%;
+                            border-radius:999px;
+                            background:
+                                linear-gradient(
+                                    90deg,
+                                    #9eaa9a,
+                                    #e3e8df
+                                );
+                            transition:
+                                width .35s ease;
+                        "
+                    >
+                    </div>
+
+                </div>
+
+
+                <span
+                    id="savingsVaultNextText"
+                    style="
+                        display:block;
+                        margin-top:7px;
+                        color:#7f8791;
+                        font-size:9px;
+                    "
+                >
+                    ₱1,000 until Level 1
+                </span>
+
+            </div>
+
+
+            <div
+                style="
+                    display:grid;
+                    grid-template-columns:
+                        repeat(
+                            2,
+                            1fr
+                        );
+                    gap:10px;
+                    margin-top:14px;
+                "
+            >
+
+                <div
+                    style="
+                        padding:11px;
+                        border:
+                            1px solid
+                            #3a4049;
+                        border-radius:11px;
+                    "
+                >
+                    <span
+                        style="
+                            color:#7f8791;
+                            font-size:9px;
+                        "
+                    >
+                        💵 CASH AVAILABLE
+                    </span>
+
+                    <strong
+                        id="vaultCashAvailable"
+                        style="
+                            display:block;
+                            margin-top:4px;
+                            font-size:14px;
+                        "
+                    >
+                        ₱0.00
+                    </strong>
+                </div>
+
+
+                <div
+                    style="
+                        padding:11px;
+                        border:
+                            1px solid
+                            #3a4049;
+                        border-radius:11px;
+                    "
+                >
+                    <span
+                        style="
+                            color:#7f8791;
+                            font-size:9px;
+                        "
+                    >
+                        💳 CARD AVAILABLE
+                    </span>
+
+                    <strong
+                        id="vaultCardAvailable"
+                        style="
+                            display:block;
+                            margin-top:4px;
+                            font-size:14px;
+                        "
+                    >
+                        ₱0.00
+                    </strong>
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    display:grid;
+                    grid-template-columns:
+                        1fr 1fr;
+                    gap:10px;
+                    margin-top:15px;
+                "
+            >
+
+                <div>
+
+                    <label
+                        style="
+                            display:block;
+                            margin-bottom:6px;
+                            color:#aab0b9;
+                            font-size:11px;
+                        "
+                    >
+                        Amount
+                    </label>
+
+                    <input
+                        type="number"
+                        id="savingsVaultAmount"
+                        min="0"
+                        step="0.01"
+                        placeholder="₱0.00"
+                        style="
+                            width:100%;
+                            padding:10px 12px;
+                            border:
+                                1px solid
+                                #3a4049;
+                            border-radius:10px;
+                            background:#1d2025;
+                            color:#f4f5f7;
+                        "
+                    >
+
+                </div>
+
+
+                <div>
+
+                    <label
+                        style="
+                            display:block;
+                            margin-bottom:6px;
+                            color:#aab0b9;
+                            font-size:11px;
+                        "
+                    >
+                        Cash / Card
+                    </label>
+
+                    <select
+                        id="savingsVaultAccount"
+                        style="
+                            width:100%;
+                            padding:10px 12px;
+                            border:
+                                1px solid
+                                #3a4049;
+                            border-radius:10px;
+                            background:#1d2025;
+                            color:#f4f5f7;
+                        "
+                    >
+
+                        <option
+                            value="Cash"
+                        >
+                            💵 Cash
+                        </option>
+
+                        <option
+                            value="Card"
+                        >
+                            💳 Card
+                        </option>
+
+                    </select>
+
+                </div>
+
+            </div>
+
+
+            <div
+                style="
+                    display:grid;
+                    grid-template-columns:
+                        1fr 1fr;
+                    gap:9px;
+                    margin-top:12px;
+                "
+            >
+
+                <button
+                    type="button"
+                    id="depositSavingsVaultBtn"
+                    style="
+                        padding:11px;
+                        border:
+                            1px solid
+                            #3a4049;
+                        border-radius:10px;
+                        background:#414852;
+                        color:white;
+                        font-weight:800;
+                        cursor:pointer;
+                    "
+                >
+                    + Deposit
+                </button>
+
+
+                <button
+                    type="button"
+                    id="withdrawSavingsVaultBtn"
+                    style="
+                        padding:11px;
+                        border:
+                            1px solid
+                            #3a4049;
+                        border-radius:10px;
+                        background:#2d3239;
+                        color:white;
+                        font-weight:800;
+                        cursor:pointer;
+                    "
+                >
+                    Withdraw
+                </button>
+
+            </div>
+
+
+            <div
+                style="
+                    margin-top:22px;
+                "
+            >
+
+                <strong
+                    style="
+                        font-size:13px;
+                    "
+                >
+                    Recent Activity
+                </strong>
+
+                <div
+                    id="savingsVaultHistory"
+                    style="
+                        margin-top:8px;
+                    "
+                >
+                </div>
+
+            </div>
+
+        </section>
+    `;
+
+
+    document.body
+        .appendChild(
+            backdrop
+        );
+
+
+    $("closeSavingsVaultBtn")
+        ?.addEventListener(
+            "click",
+            hideSavingsVault
+        );
+
+
+    $("depositSavingsVaultBtn")
+        ?.addEventListener(
+            "click",
+            depositToSavingsVault
+        );
+
+
+    $("withdrawSavingsVaultBtn")
+        ?.addEventListener(
+            "click",
+            withdrawFromSavingsVault
+        );
+
+
+    backdrop.addEventListener(
+        "click",
+        (event) => {
+
+            if (
+                event.target ===
+                backdrop
+            ) {
+
+                hideSavingsVault();
+            }
+        }
+    );
+}
+
+
+/* =========================================================
+   SHOW / HIDE
+========================================================= */
+
+function showSavingsVault() {
+
+    createSavingsVaultModal();
+
+
+    const backdrop =
+        $("savingsVaultBackdrop");
+
+
+    if (!backdrop) {
+        return;
+    }
+
+
+    updateSavingsVaultUI();
+
+
+    backdrop.style.display =
+        "grid";
+}
+
+
+function hideSavingsVault() {
+
+    const backdrop =
+        $("savingsVaultBackdrop");
+
+
+    if (backdrop) {
+
+        backdrop.style.display =
+            "none";
+    }
+}
+
+
+/* =========================================================
+   INSTALL VAULT BUTTON
+========================================================= */
+
+function installSavingsVaultFeature() {
+
+    const nav =
+        document.querySelector(
+            ".side-nav"
+        );
+
+
+    if (
+        !nav ||
+        $("savingsVaultNavBtn")
+    ) {
+
+        return;
+    }
+
+
+    const button =
+        document.createElement(
+            "button"
+        );
+
+
+    button.type =
+        "button";
+
+
+    button.id =
+        "savingsVaultNavBtn";
+
+
+    button.className =
+        "nav-btn";
+
+
+    button.innerHTML =
+        "🏦 <span>Savings Vault</span>";
+
+
+    button.addEventListener(
+        "click",
+        showSavingsVault
+    );
+
+
+    const transferButton =
+    nav.querySelector(
+        '[data-panel="transferPanel"]'
+    );
+
+
+if (transferButton) {
+
+    nav.insertBefore(
+        button,
+        transferButton
+    );
+
+} else {
+
+    nav.appendChild(
+        button
+    );
+};
+
+
+    createSavingsVaultModal();
+}
+
+
+/* =========================================================
+   START VAULT
+========================================================= */
+
+installSavingsVaultFeature();
