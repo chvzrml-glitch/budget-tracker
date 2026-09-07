@@ -4905,6 +4905,94 @@ function bindAuthEvents() {
         );
 }
 
+/* =========================================================
+   HUD ACCOUNT
+========================================================= */
+
+function updateHudAccount(user) {
+
+    const nameElement =
+        $("hudAccountName");
+
+    const emailElement =
+        $("hudAccountEmail");
+
+    const signOutButton =
+        $("hudSignOutBtn");
+
+
+    if (!user) {
+
+        if (nameElement) {
+            nameElement.textContent =
+                "Account";
+        }
+
+        if (emailElement) {
+            emailElement.textContent =
+                "Not signed in";
+        }
+
+        return;
+    }
+
+
+    if (nameElement) {
+
+        nameElement.textContent =
+            user.displayName ||
+            user.email?.split("@")[0] ||
+            "Budget User";
+    }
+
+
+    if (emailElement) {
+
+        emailElement.textContent =
+            user.email ||
+            "Signed in";
+    }
+
+
+    if (signOutButton) {
+
+        signOutButton.onclick =
+            async () => {
+
+                try {
+
+                    signOutButton.disabled =
+                        true;
+
+                    signOutButton.textContent =
+                        "Signing out...";
+
+
+                    await signOut(auth);
+
+
+                } catch (error) {
+
+                    console.error(
+                        "Sign out error:",
+                        error
+                    );
+
+                    alert(
+                        "Could not sign out. Please try again."
+                    );
+
+                } finally {
+
+                    signOutButton.disabled =
+                        false;
+
+                    signOutButton.textContent =
+                        "Sign out";
+                }
+            };
+    }
+}
 
 /* =========================================================
    AUTH START
@@ -4926,20 +5014,25 @@ onAuthStateChanged(
 
         if (!user) {
 
-            $("authScreen")
-                .style
-                .display =
-                "flex";
+    updateHudAccount(null);
 
-            return;
-        }
+    budgetDoc = null;
+
+    $("authScreen")
+        .style
+        .display =
+        "flex";
+
+    return;
+}
 
 
         $("authScreen")
             .style
             .display =
             "none";
-
+            
+updateHudAccount(user);
 
         try {
 
