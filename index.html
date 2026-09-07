@@ -9,6 +9,19 @@
 <body>
 <div class="app-shell">
     <aside class="sidebar">
+        <div class="mobile-top-nav">
+    <button type="button" id="mobileUtilitiesBtn">☰ Utilities</button>
+    <button type="button" id="mobileSignOutBtn">Sign out</button>
+</div>
+
+<div class="mobile-utilities-menu" id="mobileUtilitiesMenu" hidden>
+    <button type="button" data-mobile-panel="allowancePanel">💰 Allowance</button>
+    <button type="button" data-mobile-action="vault">🏦 Savings Vault</button>
+    <button type="button" data-mobile-panel="transferPanel">🔄 Transfer Money</button>
+    <button type="button" data-mobile-panel="debtPanel">🧾 Utang</button>
+    <button type="button" data-mobile-panel="moneyPoolPanel">⚙️ Money Split</button>
+    <button type="button" data-mobile-action="report">📊 Monthly Report</button>
+</div>
         <div class="brand">
             <div class="brand-icon">₱</div>
             <div>
@@ -17,21 +30,41 @@
             </div>
         </div>
 
-        <button class="hud-money-card" id="hudMoneyCard" type="button" aria-expanded="false">
-            <span class="hud-money-label">MONEY REMAINING</span>
-            <strong id="hudTotalMoney">₱0.00</strong>
-            <div class="hud-wallet-mini">
-                <span>💵 Cash <b id="hudCashBalance">₱0.00</b></span>
-                <span>💳 Card <b id="hudCardBalance">₱0.00</b></span>
-            </div>
-            <div class="hud-money-details" id="hudMoneyDetails">
-                <span>🚆 Beep <b id="hudBeepBalance">₱0.00</b></span>
-                <span>🛒 Needs <b id="hudNeedsBalance">₱0.00</b></span>
-                <span>🎮 Wants <b id="hudWantsBalance">₱0.00</b></span>
-                <span>🏦 Savings <b id="hudSavingsBalance">₱0.00</b></span>
-            </div>
-            <small>Tap to expand</small>
-        </button>
+        <div class="hud-money-card" id="hudMoneyCard">
+    <button type="button" class="hud-money-toggle" id="hudMoneyToggle" aria-expanded="false">
+        <span class="hud-money-label">MONEY REMAINING</span>
+        <strong id="hudTotalMoney">₱0.00</strong>
+
+        <div class="hud-wallet-mini">
+            <span>💵 Cash <b id="hudCashBalance">₱0.00</b></span>
+            <span>💳 Card <b id="hudCardBalance">₱0.00</b></span>
+        </div>
+
+        <div class="hud-money-details" id="hudMoneyDetails">
+            <span>🚆 Beep <b id="hudBeepBalance">₱0.00</b></span>
+            <span>🛒 Needs <b id="hudNeedsBalance">₱0.00</b></span>
+            <span>🎮 Wants <b id="hudWantsBalance">₱0.00</b></span>
+        </div>
+
+        <small>Tap to expand</small>
+    </button>
+
+    <button type="button" class="hud-savings" id="hudSavingsOpen">
+        <span class="hud-savings-head">
+            <span>🏦 Savings Vault</span>
+            <b id="hudSavingsBalance">₱0.00</b>
+        </span>
+
+        <span class="hud-savings-track">
+            <span id="hudSavingsProgress"></span>
+        </span>
+
+        <span class="hud-savings-foot">
+            <span id="hudSavingsLevel">Level 0</span>
+            <span id="hudSavingsTarget">₱0.00 / ₱1,000.00</span>
+        </span>
+    </button>
+</div>
 
         <nav class="side-nav">
             <button class="nav-btn active" data-panel="allowancePanel">💰 <span>Allowance</span></button>
@@ -72,10 +105,7 @@
         Sign out
     </button>
 
-</div>
-
-</aside>
-        
+</div>        
     </aside>
         
     <main class="main-content">
