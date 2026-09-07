@@ -3824,14 +3824,17 @@ function bindDailyPlanEvents() {
 
 function bindMoneyEvents() {
 
-    if ($("hudMoneyCard")) {
+    if ($("hudMoneyToggle")) {
+    $("hudMoneyToggle").addEventListener("click", () => {
+        const card = $("hudMoneyCard");
+        const expanded = card.classList.toggle("expanded");
 
-        $("hudMoneyCard")
-            .addEventListener(
-                "click",
-                toggleHudMoney
-            );
-    }
+        $("hudMoneyToggle").setAttribute(
+            "aria-expanded",
+            String(expanded)
+        );
+    });
+}
 
 
     if ($("saveMoneyPoolBtn")) {
@@ -3969,6 +3972,40 @@ function bindEnterKeys() {
     }
 }
 
+function bindMobileNavigation() {
+    const menu = $("mobileUtilitiesMenu");
+
+    $("mobileUtilitiesBtn")?.addEventListener("click", () => {
+        menu.hidden = !menu.hidden;
+    });
+
+    $("mobileSignOutBtn")?.addEventListener("click", () => {
+        $("hudSignOutBtn")?.click();
+    });
+
+    $("hudSavingsOpen")?.addEventListener("click", () => {
+        showSavingsVault();
+    });
+
+    menu?.querySelectorAll("[data-mobile-panel]").forEach(button => {
+        button.addEventListener("click", () => {
+            menu.hidden = true;
+            openModal(button.dataset.mobilePanel);
+        });
+    });
+
+    menu?.querySelector('[data-mobile-action="vault"]')
+        ?.addEventListener("click", () => {
+            menu.hidden = true;
+            showSavingsVault();
+        });
+
+    menu?.querySelector('[data-mobile-action="report"]')
+        ?.addEventListener("click", () => {
+            menu.hidden = true;
+            showMonthlyReportModal();
+        });
+}
 
 /* =========================================================
    BIND EVERYTHING
@@ -3989,6 +4026,8 @@ function bindEvents() {
     bindMoneyEvents();
 
     bindEnterKeys();
+
+    bindMobileNavigation();
 }
 
 
@@ -4088,6 +4127,23 @@ async function startApp() {
     */
 
     updateHudMoney();
+
+    const vaultData = getSavingsLevelData();
+
+if ($("hudSavingsProgress")) {
+    $("hudSavingsProgress").style.width =
+        `${vaultData.progress}%`;
+}
+
+if ($("hudSavingsLevel")) {
+    $("hudSavingsLevel").textContent =
+        `Level ${vaultData.level}`;
+}
+
+if ($("hudSavingsTarget")) {
+    $("hudSavingsTarget").textContent =
+        `${money(vaultData.balance)} / ${money(vaultData.nextTarget)}`;
+}
 }
 
 
