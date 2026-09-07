@@ -89,6 +89,7 @@ function getUserBudgetDoc(
     );
 }
 
+const LEGACY_OWNER_UID = "YOUR_OWN_UID_HERE";
 
 async function migrateLegacyBudgetIfNeeded(
     user
@@ -100,16 +101,16 @@ async function migrateLegacyBudgetIfNeeded(
         );
 
 
-    /*
-        Check if this user already has
-        personal budget data.
-    */
     const userSnapshot =
         await getDoc(
             userBudgetDoc
         );
 
 
+    /*
+        Existing user:
+        just use their own data.
+    */
     if (
         userSnapshot.exists()
     ) {
@@ -123,8 +124,47 @@ async function migrateLegacyBudgetIfNeeded(
 
 
     /*
-        No personal data yet.
-        Read the OLD shared budget.
+        IMPORTANT:
+        Only YOUR account is allowed
+        to receive the old shared data.
+    */
+    if (
+        user.uid !==
+        LEGACY_OWNER_UID
+    ) {
+
+        console.log(
+            "New user detected — creating empty budget."
+        );
+
+
+        await setDoc(
+            userBudgetDoc,
+            {
+                transactions: [],
+                transfers: [],
+                debts: [],
+                allowanceEntries: [],
+                dailyPlans: {},
+
+                moneyPoolBase: {
+                    Needs: 0,
+                    Wants: 0,
+                    Savings: 0
+                },
+
+                budgetPresets: [],
+                savingsVaultEntries: []
+            }
+        );
+
+
+        return userBudgetDoc;
+    }
+
+
+    /*
+        Only Ray's account reaches here.
     */
     const legacySnapshot =
         await getDoc(
@@ -136,51 +176,18 @@ async function migrateLegacyBudgetIfNeeded(
         !legacySnapshot.exists()
     ) {
 
-        console.log(
-            "No legacy budget found."
-        );
-
         return userBudgetDoc;
     }
 
 
-    const legacyData =
-        legacySnapshot.data();
-
-
-    /*
-        COPY ONLY.
-        This does NOT delete or modify
-        budgetTracker/main.
-    */
     await setDoc(
         userBudgetDoc,
-        legacyData
+        legacySnapshot.data()
     );
 
 
-    /*
-        Verify the copy really exists.
-    */
-    const verifySnapshot =
-        await getDoc(
-            userBudgetDoc
-        );
-
-
-    if (
-        !verifySnapshot.exists()
-    ) {
-
-        throw new Error(
-            "Migration verification failed."
-        );
-    }
-
-
     console.log(
-        "Legacy budget safely copied to:",
-        user.uid
+        "Legacy budget copied to owner account."
     );
 
 
@@ -2754,10 +2761,18 @@ async function saveData() {
 
     try {
 
-        localStorage.setItem(
-            "budgetTrackerBackup",
-            JSON.stringify(data)
-        );
+        const backupKey =
+    auth.currentUser
+        ? `budgetTrackerBackup_${auth.currentUser.uid}`
+        : null;
+
+if (backupKey) {
+
+    localStorage.setItem(
+        backupKey,
+        JSON.stringify(data)
+    );
+}
 
     } catch (error) {
 
@@ -2807,10 +2822,19 @@ function loadLocalBackup() {
 
     try {
 
-        const stored =
-            localStorage.getItem(
-                "budgetTrackerBackup"
-            );
+        const backupKey =
+    auth.currentUser
+        ? `budgetTrackerBackup_${auth.currentUser.uid}`
+        : null;
+
+if (!backupKey) {
+    return false;
+}
+
+const stored =
+    localStorage.getItem(
+        backupKey
+    );
 
         if (!stored) {
             return false;
