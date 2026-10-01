@@ -659,3 +659,49 @@ label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 12px
         transform: none;
     }
 }
+
+/* ===== PRESET DELETE BUTTON ===== */
+
+.preset-chip-wrap {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.preset-chip-wrap .preset-chip {
+    flex: 1;
+    min-width: 0;
+}
+
+.preset-delete-btn {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+
+    border: 1px solid var(--border);
+    border-radius: 8px;
+
+    background: #30353c;
+    color: var(--danger);
+
+    cursor: pointer;
+
+    display: grid;
+    place-items: center;
+
+    font-size: 13px;
+
+    transition:
+        background .18s ease,
+        transform .18s ease;
+}
+
+.preset-delete-btn:hover {
+    background: #3b3033;
+    transform: scale(1.05);
+}
+
+.preset-delete-btn:active {
+    transform: scale(.95);
+}
