@@ -101,16 +101,17 @@ async function migrateLegacyBudgetIfNeeded(
         );
 
 
+    /*
+        First, check if this user's
+        private budget already exists.
+    */
+
     const userSnapshot =
         await getDoc(
             userBudgetDoc
         );
 
 
-    /*
-        Existing user:
-        just use their own data.
-    */
     if (
         userSnapshot.exists()
     ) {
@@ -124,76 +125,45 @@ async function migrateLegacyBudgetIfNeeded(
 
 
     /*
+        No personal budget yet.
+
         IMPORTANT:
-        Only YOUR account is allowed
-        to receive the old shared data.
+        We are NOT checking the old
+        shared budget anymore.
+
+        This prevents an old Firebase
+        rules/migration problem from
+        stopping the whole app.
     */
-    if (
-        user.uid !==
-        LEGACY_OWNER_UID
-    ) {
 
-        console.log(
-            "New user detected — creating empty budget."
-        );
-
-
-        await setDoc(
-            userBudgetDoc,
-            {
-                transactions: [],
-                transfers: [],
-                debts: [],
-                allowanceEntries: [],
-                dailyPlans: {},
-
-                moneyPoolBase: {
-                    Needs: 0,
-                    Wants: 0,
-                    Savings: 0
-                },
-
-                budgetPresets: [],
-                savingsVaultEntries: []
-            }
-        );
-
-
-        return userBudgetDoc;
-    }
-
-
-    /*
-        Only Ray's account reaches here.
-    */
-    const legacySnapshot =
-        await getDoc(
-            legacyBudgetDoc
-        );
-
-
-    if (
-        !legacySnapshot.exists()
-    ) {
-
-        return userBudgetDoc;
-    }
+    console.log(
+        "New user detected — creating empty budget."
+    );
 
 
     await setDoc(
         userBudgetDoc,
-        legacySnapshot.data()
-    );
+        {
+            transactions: [],
+            transfers: [],
+            debts: [],
+            allowanceEntries: [],
+            dailyPlans: {},
 
+            moneyPoolBase: {
+                Needs: 0,
+                Wants: 0,
+                Savings: 0
+            },
 
-    console.log(
-        "Legacy budget copied to owner account."
+            budgetPresets: [],
+            savingsVaultEntries: []
+        }
     );
 
 
     return userBudgetDoc;
 }
-
 
 /* =========================================================
    DATA
