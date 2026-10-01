@@ -1898,6 +1898,15 @@ function renderPresets() {
     .forEach(
         (preset) => {
 
+            const wrapper =
+                document.createElement(
+                    "div"
+                );
+
+            wrapper.className =
+                "preset-chip-wrap";
+
+
             const btn =
                 document.createElement(
                     "button"
@@ -1927,6 +1936,7 @@ function renderPresets() {
                 </b>
             `;
 
+
             btn.addEventListener(
                 "click",
                 () =>
@@ -1936,11 +1946,92 @@ function renderPresets() {
                     )
             );
 
-            grid.appendChild(btn);
+
+            const deleteBtn =
+                document.createElement(
+                    "button"
+                );
+
+            deleteBtn.type =
+                "button";
+
+            deleteBtn.className =
+                "preset-delete-btn";
+
+            deleteBtn.title =
+                "Remove preset";
+
+            deleteBtn.textContent =
+                "🗑️";
+
+
+            deleteBtn.addEventListener(
+                "click",
+                async (event) => {
+
+                    event.stopPropagation();
+
+                    await deletePreset(
+                        preset.id
+                    );
+
+                }
+            );
+
+
+            wrapper.appendChild(btn);
+
+            wrapper.appendChild(
+                deleteBtn
+            );
+
+            grid.appendChild(
+                wrapper
+            );
+
         }
     );
 }
+async function deletePreset(
+    presetId
+) {
 
+    const preset =
+        budgetPresets.find(
+            (item) =>
+                String(item.id) ===
+                String(presetId)
+        );
+
+    if (!preset) {
+        return;
+    }
+
+
+    const confirmed =
+        confirm(
+            `Remove "${preset.name}" preset?`
+        );
+
+
+    if (!confirmed) {
+        return;
+    }
+
+
+    budgetPresets =
+        budgetPresets.filter(
+            (item) =>
+                String(item.id) !==
+                String(presetId)
+        );
+
+
+    await saveData();
+
+    renderPresets();
+
+}
 
 function togglePreset(
     preset,
